@@ -24,7 +24,7 @@ A terminal-based system resource monitor built for tracking resource usage when 
 - **OOM Kill Tracker** — Status bar shows the most recent OOM kill from the last 8 hours (kernel OOM and systemd-oomd)
 - **Process Tables** — Top 10 processes by memory (Used/Shared) and CPU usage (Core % + system-wide CPU %)
 - **50 Color Themes** — Press `t` to browse and switch themes with live preview; persists across sessions
-- **Color Mode Toggle** — Press `c` to switch between truecolor and safe Basic output; persists across sessions
+- **Color Mode Toggle** — Press `c` to switch between truecolor and safe Basic color output; persists across sessions
 - **Gradient Bar Charts** — Smooth per-block color gradients from low to high across all bars
 - **Responsive UI** — 50ms input polling for snappy keyboard navigation
 
@@ -95,7 +95,7 @@ ktop uninstall
 |-----|--------|
 | `q` / `ESC` | Quit |
 | `t` | Open theme picker |
-| `c` | Toggle color mode between truecolor and safe Basic output |
+| `c` | Toggle color mode between truecolor and safe Basic color output |
 | Arrow keys | Navigate theme picker |
 | `Enter` | Select theme |
 

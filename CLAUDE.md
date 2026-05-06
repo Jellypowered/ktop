@@ -12,6 +12,12 @@ Then copy the binary to install locally:
 
 ## Changelog
 
+### v1.0.17
+- Restore color in Basic mode without using extended foreground color escapes
+- Rewrite crossterm standard-palette `38;5;n` / `48;5;n` SGR into classic ANSI `30-37` / `90-97` and `40-47` / `100-107`
+- Map theme RGB colors to visible classic ANSI colors in Basic mode so text, borders, bars, and status accents are colored again
+- Tested: `cargo check`, `cargo test`, `cargo build --release`, PTY capture with zero RGB foreground, zero indexed foreground, zero blink SGR, and classic ANSI color output in Basic mode
+
 ### v1.0.16
 - Make Basic color mode avoid all extended foreground color escapes, including indexed `38;5;n` as well as RGB `38;2;r;g;b`
 - Reset/clear the terminal immediately when toggling color mode to repaint stale truecolor-styled cells

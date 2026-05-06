@@ -128,8 +128,72 @@ fn display_color(c: Color, truecolor: bool) -> Color {
     if truecolor {
         c
     } else {
-        Color::Reset
+        basic_color(c)
     }
+}
+
+fn basic_color(c: Color) -> Color {
+    match c {
+        Color::Rgb(r, g, b) => rgb_to_basic_color(r, g, b),
+        Color::Indexed(n) => indexed_to_basic_color(n),
+        Color::Black | Color::DarkGray => Color::White,
+        Color::Gray => Color::White,
+        Color::Reset => Color::Reset,
+        _ => c,
+    }
+}
+
+fn indexed_to_basic_color(n: u8) -> Color {
+    match n {
+        0 | 8 => Color::White,
+        1 => Color::Red,
+        2 => Color::Green,
+        3 => Color::Yellow,
+        4 => Color::Blue,
+        5 => Color::Magenta,
+        6 => Color::Cyan,
+        7 => Color::White,
+        9 => Color::LightRed,
+        10 => Color::LightGreen,
+        11 => Color::LightYellow,
+        12 => Color::LightBlue,
+        13 => Color::LightMagenta,
+        14 => Color::LightCyan,
+        15 => Color::White,
+        _ => Color::White,
+    }
+}
+
+fn rgb_to_basic_color(r: u8, g: u8, b: u8) -> Color {
+    const CANDIDATES: &[(Color, (i32, i32, i32))] = &[
+        (Color::Red, (205, 49, 49)),
+        (Color::Green, (13, 188, 121)),
+        (Color::Yellow, (229, 229, 16)),
+        (Color::Blue, (36, 114, 200)),
+        (Color::Magenta, (188, 63, 188)),
+        (Color::Cyan, (17, 168, 205)),
+        (Color::White, (229, 229, 229)),
+        (Color::LightRed, (241, 76, 76)),
+        (Color::LightGreen, (35, 209, 139)),
+        (Color::LightYellow, (245, 245, 67)),
+        (Color::LightBlue, (59, 142, 234)),
+        (Color::LightMagenta, (214, 112, 214)),
+        (Color::LightCyan, (41, 184, 219)),
+    ];
+
+    let r = i32::from(r);
+    let g = i32::from(g);
+    let b = i32::from(b);
+    CANDIDATES
+        .iter()
+        .min_by_key(|(_, (cr, cg, cb))| {
+            let dr = r - cr;
+            let dg = g - cg;
+            let db = b - cb;
+            dr * dr + dg * dg + db * db
+        })
+        .map(|(color, _)| *color)
+        .unwrap_or(Color::White)
 }
 
 fn muted_style(steady: bool, truecolor: bool) -> Style {

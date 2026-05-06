@@ -26,7 +26,157 @@ const RESIZE_DEBOUNCE: Duration = Duration::from_millis(250);
 const PROCESS_SCAN_SECS: f64 = 3.0;
 const COMPAT_PROCESS_SCAN_SECS: f64 = 10.0;
 
-type TerminalBackend = CrosstermBackend<BufWriter<Stdout>>;
+type TerminalBackend = CrosstermBackend<AnsiColorFilter<BufWriter<Stdout>>>;
+
+struct AnsiColorFilter<W: Write> {
+    inner: W,
+    pending: Vec<u8>,
+}
+
+impl<W: Write> AnsiColorFilter<W> {
+    fn new(inner: W) -> Self {
+        Self {
+            inner,
+            pending: Vec::new(),
+        }
+    }
+
+    fn flush_complete(&mut self, force: bool) -> io::Result<()> {
+        let mut out = Vec::with_capacity(self.pending.len());
+        let mut i = 0;
+
+        while i < self.pending.len() {
+            if self.pending[i] != 0x1b {
+                let next = self.pending[i..]
+                    .iter()
+                    .position(|&b| b == 0x1b)
+                    .map(|pos| i + pos)
+                    .unwrap_or(self.pending.len());
+                out.extend_from_slice(&self.pending[i..next]);
+                i = next;
+                continue;
+            }
+
+            if i + 1 >= self.pending.len() {
+                if force {
+                    out.push(self.pending[i]);
+                    i += 1;
+                }
+                break;
+            }
+
+            if self.pending[i + 1] != b'[' {
+                out.push(self.pending[i]);
+                i += 1;
+                continue;
+            }
+
+            let Some(end_rel) = self.pending[i + 2..]
+                .iter()
+                .position(|&b| (0x40..=0x7e).contains(&b))
+            else {
+                if force {
+                    out.extend_from_slice(&self.pending[i..]);
+                    i = self.pending.len();
+                }
+                break;
+            };
+
+            let end = i + 2 + end_rel;
+            if self.pending[end] == b'm' {
+                out.extend(rewrite_sgr(&self.pending[i + 2..end]));
+            } else {
+                out.extend_from_slice(&self.pending[i..=end]);
+            }
+            i = end + 1;
+        }
+
+        if !out.is_empty() {
+            self.inner.write_all(&out)?;
+        }
+        self.pending.drain(..i);
+        Ok(())
+    }
+}
+
+impl<W: Write> Write for AnsiColorFilter<W> {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        self.pending.extend_from_slice(buf);
+        self.flush_complete(false)?;
+        Ok(buf.len())
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        self.flush_complete(true)?;
+        self.inner.flush()
+    }
+}
+
+fn rewrite_sgr(params: &[u8]) -> Vec<u8> {
+    let Ok(text) = std::str::from_utf8(params) else {
+        let mut original = Vec::from(b"\x1b[" as &[u8]);
+        original.extend_from_slice(params);
+        original.push(b'm');
+        return original;
+    };
+
+    let parts: Vec<&str> = if text.is_empty() {
+        vec!["0"]
+    } else {
+        text.split(';').collect()
+    };
+    let mut rewritten = Vec::new();
+    let mut i = 0;
+
+    while i < parts.len() {
+        if i + 2 < parts.len() && (parts[i] == "38" || parts[i] == "48") && parts[i + 1] == "5" {
+            if let Ok(n) = parts[i + 2].parse::<u8>() {
+                if n < 16 {
+                    rewritten.push(ansi_palette_code(parts[i] == "48", n).to_string());
+                    i += 3;
+                    continue;
+                }
+            }
+        }
+
+        rewritten.push(parts[i].to_string());
+        i += 1;
+    }
+
+    format!("\x1b[{}m", rewritten.join(";")).into_bytes()
+}
+
+fn ansi_palette_code(background: bool, n: u8) -> u8 {
+    match (background, n) {
+        (false, 0..=7) => 30 + n,
+        (false, 8..=15) => 90 + (n - 8),
+        (true, 0..=7) => 40 + n,
+        (true, 8..=15) => 100 + (n - 8),
+        _ => unreachable!(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::rewrite_sgr;
+
+    #[test]
+    fn rewrites_standard_indexed_foreground_to_classic_ansi() {
+        assert_eq!(rewrite_sgr(b"38;5;13"), b"\x1b[95m");
+        assert_eq!(rewrite_sgr(b"1;38;5;6;49"), b"\x1b[1;36;49m");
+    }
+
+    #[test]
+    fn rewrites_standard_indexed_background_to_classic_ansi() {
+        assert_eq!(rewrite_sgr(b"48;5;10"), b"\x1b[102m");
+    }
+
+    #[test]
+    fn leaves_extended_and_rgb_colors_unchanged() {
+        assert_eq!(rewrite_sgr(b"38;5;128"), b"\x1b[38;5;128m");
+        assert_eq!(rewrite_sgr(b"38;2;1;2;3"), b"\x1b[38;2;1;2;3m");
+    }
+}
 
 pub struct AppState {
     // Theme
@@ -142,7 +292,7 @@ pub fn run(
 
     // Terminal setup
     terminal::enable_raw_mode()?;
-    let mut stdout = BufWriter::new(io::stdout());
+    let mut stdout = AnsiColorFilter::new(BufWriter::new(io::stdout()));
     if !no_alt_screen {
         crossterm::execute!(stdout, EnterAlternateScreen)?;
     }

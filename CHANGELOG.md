@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.0.17 — 2026-05-06
+
+- Restored color in Basic mode without using extended foreground color escapes
+- Rewrites crossterm standard-palette foreground/background SGR from `38;5;n` / `48;5;n` into classic ANSI `30-37` / `90-97` and `40-47` / `100-107`
+- Basic mode maps theme RGB colors to visible classic ANSI colors, keeping text, borders, bars, and status accents colored while avoiding the flash-triggering foreground sequence class
+- Tested: `cargo check`, `cargo test`, `cargo build --release`, PTY capture with Basic mode showing zero RGB foreground, zero indexed foreground, zero blink SGR, and classic ANSI color output
+
 ## 1.0.16 — 2026-05-06
 
 - Made Basic color mode avoid all extended foreground color SGR output, including indexed `38;5;n` sequences as well as RGB `38;2;r;g;b`
