@@ -72,7 +72,10 @@ ktop --theme "Tokyo Night"
 ktop --sim
 
 # Remote terminal fallback if the display flashes
-ktop --no-alt-screen
+ktop --compat
+
+# Report terminal size and resize behavior
+ktop diagnose-terminal
 
 # Show version
 ktop --version
@@ -96,10 +99,20 @@ ktop uninstall
 If a web or remote-support terminal flashes while repainting, try:
 
 ```bash
-KTOP_NO_ALT_SCREEN=1 ktop
+ktop --compat
 ```
 
-If synchronized redraws render incorrectly in that terminal, add `--no-sync`.
+Compatibility mode disables alternate screen and synchronized redraws, skips startup clears, and slows the default refresh to 2s.
+
+You can also set `KTOP_COMPAT=1`.
+
+To check whether a terminal is reporting unstable sizes or repeated resize events:
+
+```bash
+ktop diagnose-terminal --duration 8
+```
+
+If a command unexpectedly starts the monitor, check `ktop --version`; terminal diagnostics and compatibility mode require ktop 1.0.10 or newer.
 
 ## Requirements
 

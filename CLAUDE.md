@@ -12,6 +12,14 @@ Then copy the binary to install locally:
 
 ## Changelog
 
+### v1.0.10
+- Avoid repeated terminal clears from unstable resize reporting by using a fixed viewport and debounced resize handling
+- Add `ktop diagnose-terminal` for terminal size and resize-event diagnostics
+- Add `--compat` / `KTOP_COMPAT=1` for conservative remote terminal drawing
+- Compatibility mode disables alternate screen and synchronized redraws, skips startup clears, and defaults to 2s refresh unless `-r` is set
+- Unknown commands/options now fail with a usage error instead of launching the TUI
+- Terminal diagnostics still print size samples when stdin event polling is unavailable
+
 ### v1.0.9
 - Add `ktop update` to run the README one-line update installer
 - Add `ktop uninstall` to remove only the resolved `ktop` executable and leave config/system files untouched

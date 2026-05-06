@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.0.10 — 2026-05-06
+
+- Avoid repeated terminal clears from unstable resize reporting by using a fixed viewport and debounced resize handling
+- Added `ktop diagnose-terminal` to report terminal size jitter and resize event storms
+- Added `--compat` / `KTOP_COMPAT=1` for terminals that still flash during normal full-screen rendering
+- Compatibility mode disables alternate screen and synchronized redraws, skips startup clears, and defaults to a 2s refresh unless `-r` is set
+- Unknown commands/options now exit with a usage error instead of falling through into the TUI
+- Terminal diagnostics still print size samples when stdin event polling is unavailable
+
 ## 1.0.9 — 2026-05-06
 
 - Added `ktop update` to run the official README one-line update installer

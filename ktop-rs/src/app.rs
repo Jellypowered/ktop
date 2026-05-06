@@ -12,7 +12,8 @@ use crossterm::terminal::{
 };
 use crossterm::QueueableCommand;
 use ratatui::backend::CrosstermBackend;
-use ratatui::Terminal;
+use ratatui::layout::Rect;
+use ratatui::{Terminal, TerminalOptions, Viewport};
 use std::collections::{HashMap, VecDeque};
 use std::io::{self, Write};
 use std::time::{Duration, Instant};
@@ -20,6 +21,7 @@ use std::time::{Duration, Instant};
 use sysinfo::{CpuRefreshKind, MemoryRefreshKind, Networks, RefreshKind, System};
 
 const HISTORY_LEN: usize = 300;
+const RESIZE_DEBOUNCE: Duration = Duration::from_millis(250);
 
 pub struct AppState {
     // Theme
@@ -81,6 +83,7 @@ pub fn run(
     theme_override: Option<String>,
     no_alt_screen: bool,
     no_sync: bool,
+    compat: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
     // Init system
     let mut sys = System::new_with_specifics(
@@ -137,8 +140,16 @@ pub fn run(
     }
     crossterm::execute!(stdout, Hide)?;
     let backend = CrosstermBackend::new(stdout);
-    let mut terminal = Terminal::new(backend)?;
-    terminal.clear()?;
+    let mut active_area = terminal_area()?;
+    let mut terminal = Terminal::with_options(
+        backend,
+        TerminalOptions {
+            viewport: Viewport::Fixed(active_area),
+        },
+    )?;
+    if !compat && !no_alt_screen {
+        terminal.clear()?;
+    }
 
     let mut state = AppState {
         theme_name: theme_name.clone(),
@@ -181,22 +192,47 @@ pub fn run(
 
     let refresh_dur = Duration::from_secs_f64(refresh);
     let mut last_refresh = Instant::now() - refresh_dur;
+    let mut pending_resize: Option<(Rect, Instant)> = None;
 
     let result = (|| -> Result<(), Box<dyn std::error::Error>> {
         loop {
+            let now = Instant::now();
+
             // Handle events with ~50ms poll timeout
             if event::poll(Duration::from_millis(50))? {
-                if let Event::Key(key) = event::read()? {
-                    if handle_key(key, &mut state) {
-                        break;
+                match event::read()? {
+                    Event::Key(key) => {
+                        if handle_key(key, &mut state) {
+                            break;
+                        }
+                        // Immediate redraw on keypress
+                        if pending_resize.is_none() {
+                            draw_app(&mut terminal, &state, !no_sync)?;
+                        }
+                        continue;
                     }
-                    // Immediate redraw on keypress
-                    draw_app(&mut terminal, &state, !no_sync)?;
-                    continue;
+                    Event::Resize(width, height) => {
+                        note_resize(
+                            &mut pending_resize,
+                            Rect::new(0, 0, width.max(1), height.max(1)),
+                            now,
+                        );
+                        continue;
+                    }
+                    _ => {}
                 }
             }
 
-            let now = Instant::now();
+            if let Some(area) = stable_resize(&mut pending_resize, active_area, now)? {
+                active_area = area;
+                terminal.resize(active_area)?;
+                draw_app(&mut terminal, &state, !no_sync)?;
+                continue;
+            }
+            if pending_resize.is_some() {
+                continue;
+            }
+
             if now.duration_since(last_refresh) >= refresh_dur {
                 last_refresh = now;
 
@@ -324,6 +360,46 @@ pub fn run(
         (Ok(()), Err(e)) => Err(Box::new(e)),
         (Err(e), _) => Err(e),
     }
+}
+
+fn terminal_area() -> io::Result<Rect> {
+    let (width, height) = terminal::size()?;
+    Ok(Rect::new(0, 0, width.max(1), height.max(1)))
+}
+
+fn note_resize(pending_resize: &mut Option<(Rect, Instant)>, area: Rect, now: Instant) {
+    match pending_resize {
+        Some((pending_area, since)) if *pending_area == area => {
+            if now < *since {
+                *since = now;
+            }
+        }
+        _ => {
+            *pending_resize = Some((area, now));
+        }
+    }
+}
+
+fn stable_resize(
+    pending_resize: &mut Option<(Rect, Instant)>,
+    active_area: Rect,
+    now: Instant,
+) -> io::Result<Option<Rect>> {
+    let observed_area = terminal_area()?;
+    if observed_area == active_area {
+        *pending_resize = None;
+        return Ok(None);
+    }
+
+    note_resize(pending_resize, observed_area, now);
+    if let Some((area, since)) = *pending_resize {
+        if now.duration_since(since) >= RESIZE_DEBOUNCE {
+            *pending_resize = None;
+            return Ok(Some(area));
+        }
+    }
+
+    Ok(None)
 }
 
 fn draw_app(
