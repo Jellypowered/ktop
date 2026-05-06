@@ -141,9 +141,23 @@ fn empty_bar_span(width: usize, steady: bool) -> Span<'static> {
 }
 
 fn bar_spans(pct: f64, width: usize, theme: &Theme, steady: bool) -> Vec<Span<'static>> {
+    let pct = pct.clamp(0.0, 100.0);
     let filled = (pct / 100.0 * width as f64) as usize;
     let empty = width.saturating_sub(filled);
     let mut spans = Vec::new();
+    if steady {
+        if filled > 0 {
+            spans.push(Span::styled(
+                "█".repeat(filled),
+                Style::default().fg(color_for_pct(pct, theme)),
+            ));
+        }
+        if empty > 0 {
+            spans.push(empty_bar_span(empty, true));
+        }
+        return spans;
+    }
+
     for i in 0..filled {
         let t = i as f64 / (width.max(1) - 1) as f64;
         let c = lerp_color(theme.bar_low, theme.bar_high, t);

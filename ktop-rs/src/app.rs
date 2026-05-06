@@ -16,7 +16,7 @@ use ratatui::backend::CrosstermBackend;
 use ratatui::layout::Rect;
 use ratatui::{Terminal, TerminalOptions, Viewport};
 use std::collections::{HashMap, VecDeque};
-use std::io::{self, Write};
+use std::io::{self, BufWriter, Stdout, Write};
 use std::time::{Duration, Instant};
 
 use sysinfo::{CpuRefreshKind, MemoryRefreshKind, Networks, RefreshKind, System};
@@ -25,6 +25,8 @@ const HISTORY_LEN: usize = 300;
 const RESIZE_DEBOUNCE: Duration = Duration::from_millis(250);
 const PROCESS_SCAN_SECS: f64 = 3.0;
 const COMPAT_PROCESS_SCAN_SECS: f64 = 10.0;
+
+type TerminalBackend = CrosstermBackend<BufWriter<Stdout>>;
 
 pub struct AppState {
     // Theme
@@ -138,7 +140,7 @@ pub fn run(
 
     // Terminal setup
     terminal::enable_raw_mode()?;
-    let mut stdout = io::stdout();
+    let mut stdout = BufWriter::new(io::stdout());
     if !no_alt_screen {
         crossterm::execute!(stdout, EnterAlternateScreen)?;
     }
@@ -413,7 +415,7 @@ fn stable_resize(
 }
 
 fn draw_app(
-    terminal: &mut Terminal<CrosstermBackend<io::Stdout>>,
+    terminal: &mut Terminal<TerminalBackend>,
     state: &AppState,
     sync_updates: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
@@ -438,7 +440,7 @@ fn draw_app(
 }
 
 fn restore_terminal(
-    terminal: &mut Terminal<CrosstermBackend<io::Stdout>>,
+    terminal: &mut Terminal<TerminalBackend>,
     alt_screen: bool,
     compat: bool,
 ) -> io::Result<()> {
@@ -460,6 +462,7 @@ fn restore_terminal(
     } else {
         writeln!(terminal.backend_mut())?;
     }
+    terminal.backend_mut().flush()?;
     Ok(())
 }
 

@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.14 — 2026-05-06
+
+- Buffered terminal output before handing stdout to ratatui so frame flushes are less fragmented over remote transports
+- Simplified `--compat` progress bars to one filled span plus one empty span instead of per-cell RGB gradient spans, reducing paint-stream volume during each poll
+
 ## 1.0.13 — 2026-05-06
 
 - Made `--compat` avoid dark-gray ANSI styling and shaded filler glyphs, which can animate or flash in some remote terminals even after ktop exits

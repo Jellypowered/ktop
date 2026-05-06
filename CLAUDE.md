@@ -12,6 +12,10 @@ Then copy the binary to install locally:
 
 ## Changelog
 
+### v1.0.14
+- Buffer terminal stdout before ratatui writes frames to reduce fragmented output over remote transports
+- Simplify `--compat` progress bars to one filled span plus one empty span instead of per-cell RGB gradients
+
 ### v1.0.13
 - Make `--compat` avoid dark-gray ANSI styling and shaded filler glyphs for terminals that animate stale gray cells after process exit
 - Clear/reset the current screen on compat entry/exit so stale TUI cells do not remain behind the shell prompt
