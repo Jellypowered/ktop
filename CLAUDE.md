@@ -12,6 +12,12 @@ Then copy the binary to install locally:
 
 ## Changelog
 
+### v1.0.15
+- Add a main-screen `c Color` toggle after `t Theme` to switch between truecolor and basic ANSI colors
+- Persist the selected color mode in `~/.config/ktop/config.json` alongside the theme, with truecolor as the default for existing configs
+- Map RGB/indexed theme colors to ANSI/basic colors when Basic color mode is active
+- Tested: `cargo check`, `cargo build --release`, PTY smoke for persisted `c` toggle and RGB-SGR removal in Basic mode
+
 ### v1.0.14
 - Buffer terminal stdout before ratatui writes frames to reduce fragmented output over remote transports
 - Simplify `--compat` progress bars to one filled span plus one empty span instead of per-cell RGB gradients

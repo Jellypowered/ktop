@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.0.15 — 2026-05-06
+
+- Added a main-screen `c Color` toggle that switches between truecolor and basic ANSI color output
+- Persisted color mode in the existing user config alongside the selected theme, defaulting existing installs to truecolor
+- Mapped RGB and indexed theme colors to ANSI/basic colors when Basic color mode is active
+- Tested: `cargo check`, `cargo build --release`, PTY smoke for persisted `c` toggle and RGB-SGR removal in Basic mode
+
 ## 1.0.14 — 2026-05-06
 
 - Buffered terminal output before handing stdout to ratatui so frame flushes are less fragmented over remote transports

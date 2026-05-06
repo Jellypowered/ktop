@@ -1,4 +1,4 @@
-use crate::config;
+use crate::config::{self, ColorMode};
 use crate::gpu::{self, GpuInfo, GpuTemp, NvidiaState};
 use crate::system::{self, NetTracker, OomTracker, ProcInfo, ProcScanner};
 use crate::theme::{self, Theme};
@@ -35,6 +35,7 @@ pub struct AppState {
     pub picking_theme: bool,
     pub theme_cursor: usize,
     pub theme_scroll: usize,
+    pub color_mode: ColorMode,
 
     // CPU
     pub cpu_pct: f64,
@@ -120,8 +121,9 @@ pub fn run(
     // Load theme
     let cfg = config::load_config();
     let theme_name = theme_override
-        .or(cfg.theme)
+        .or_else(|| cfg.theme.clone())
         .unwrap_or_else(|| "Vaporwave".to_string());
+    let color_mode = cfg.color_mode.unwrap_or_default();
     let theme_name = if theme::theme_names().contains(&theme_name.as_str()) {
         theme_name
     } else {
@@ -163,6 +165,7 @@ pub fn run(
         picking_theme: false,
         theme_cursor,
         theme_scroll: 0,
+        color_mode,
         cpu_pct: 0.0,
         cpu_total_pct: 0.0,
         cpu_hist: VecDeque::with_capacity(HISTORY_LEN),
@@ -481,6 +484,7 @@ fn handle_key(key: KeyEvent, state: &mut AppState) -> bool {
                     state.picking_theme = false;
                     config::save_config(&config::Config {
                         theme: Some(name.to_string()),
+                        color_mode: Some(state.color_mode),
                     });
                 }
             }
@@ -511,6 +515,13 @@ fn handle_key(key: KeyEvent, state: &mut AppState) -> bool {
                 .iter()
                 .position(|&n| n == state.theme_name)
                 .unwrap_or(0);
+        }
+        KeyCode::Char('c') | KeyCode::Char('C') => {
+            state.color_mode = state.color_mode.toggle();
+            config::save_config(&config::Config {
+                theme: Some(state.theme_name.clone()),
+                color_mode: Some(state.color_mode),
+            });
         }
         _ => {}
     }

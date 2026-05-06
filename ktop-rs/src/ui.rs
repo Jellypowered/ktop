@@ -120,6 +120,75 @@ fn lerp_color(c1: Color, c2: Color, t: f64) -> Color {
     Color::Rgb(r, g, b)
 }
 
+fn truecolor_enabled(state: &AppState) -> bool {
+    state.color_mode == crate::config::ColorMode::Truecolor
+}
+
+fn display_color(c: Color, truecolor: bool) -> Color {
+    if truecolor {
+        return c;
+    }
+
+    match c {
+        Color::Rgb(r, g, b) => nearest_basic_color(r, g, b),
+        Color::Indexed(i) => indexed_to_basic(i),
+        _ => c,
+    }
+}
+
+fn nearest_basic_color(r: u8, g: u8, b: u8) -> Color {
+    let palette = [
+        (64, 64, 64, Color::DarkGray),
+        (128, 0, 0, Color::Red),
+        (0, 128, 0, Color::Green),
+        (128, 128, 0, Color::Yellow),
+        (0, 0, 128, Color::Blue),
+        (128, 0, 128, Color::Magenta),
+        (0, 128, 128, Color::Cyan),
+        (192, 192, 192, Color::Gray),
+        (255, 0, 0, Color::LightRed),
+        (0, 255, 0, Color::LightGreen),
+        (255, 255, 0, Color::LightYellow),
+        (0, 0, 255, Color::LightBlue),
+        (255, 0, 255, Color::LightMagenta),
+        (0, 255, 255, Color::LightCyan),
+        (255, 255, 255, Color::White),
+    ];
+
+    palette
+        .iter()
+        .min_by_key(|(pr, pg, pb, _)| {
+            let dr = r as i32 - *pr;
+            let dg = g as i32 - *pg;
+            let db = b as i32 - *pb;
+            dr * dr + dg * dg + db * db
+        })
+        .map(|(_, _, _, color)| *color)
+        .unwrap_or(Color::White)
+}
+
+fn indexed_to_basic(i: u8) -> Color {
+    match i {
+        0 => Color::Black,
+        1 => Color::Red,
+        2 => Color::Green,
+        3 => Color::Yellow,
+        4 => Color::Blue,
+        5 => Color::Magenta,
+        6 => Color::Cyan,
+        7 => Color::Gray,
+        8 => Color::DarkGray,
+        9 => Color::LightRed,
+        10 => Color::LightGreen,
+        11 => Color::LightYellow,
+        12 => Color::LightBlue,
+        13 => Color::LightMagenta,
+        14 => Color::LightCyan,
+        15 => Color::White,
+        _ => Color::White,
+    }
+}
+
 fn muted_style(steady: bool) -> Style {
     if steady {
         Style::default()
@@ -140,7 +209,13 @@ fn empty_bar_span(width: usize, steady: bool) -> Span<'static> {
     }
 }
 
-fn bar_spans(pct: f64, width: usize, theme: &Theme, steady: bool) -> Vec<Span<'static>> {
+fn bar_spans(
+    pct: f64,
+    width: usize,
+    theme: &Theme,
+    steady: bool,
+    truecolor: bool,
+) -> Vec<Span<'static>> {
     let pct = pct.clamp(0.0, 100.0);
     let filled = (pct / 100.0 * width as f64) as usize;
     let empty = width.saturating_sub(filled);
@@ -149,7 +224,7 @@ fn bar_spans(pct: f64, width: usize, theme: &Theme, steady: bool) -> Vec<Span<'s
         if filled > 0 {
             spans.push(Span::styled(
                 "█".repeat(filled),
-                Style::default().fg(color_for_pct(pct, theme)),
+                Style::default().fg(display_color(color_for_pct(pct, theme), truecolor)),
             ));
         }
         if empty > 0 {
@@ -161,7 +236,10 @@ fn bar_spans(pct: f64, width: usize, theme: &Theme, steady: bool) -> Vec<Span<'s
     for i in 0..filled {
         let t = i as f64 / (width.max(1) - 1) as f64;
         let c = lerp_color(theme.bar_low, theme.bar_high, t);
-        spans.push(Span::styled("█", Style::default().fg(c)));
+        spans.push(Span::styled(
+            "█",
+            Style::default().fg(display_color(c, truecolor)),
+        ));
     }
     if empty > 0 {
         spans.push(empty_bar_span(empty, steady));
@@ -202,7 +280,8 @@ fn fmt_speed(b: f64) -> String {
 
 // ── Helpers ──
 
-fn styled_block<'a>(title: &str, color: Color) -> Block<'a> {
+fn styled_block<'a>(title: &str, color: Color, truecolor: bool) -> Block<'a> {
+    let color = display_color(color, truecolor);
     Block::default()
         .borders(Borders::ALL)
         .border_type(BorderType::Rounded)
@@ -252,10 +331,11 @@ pub fn render(f: &mut Frame, state: &AppState) {
 
 fn render_gpu(f: &mut Frame, area: Rect, state: &AppState) {
     let theme = &state.theme;
+    let truecolor = truecolor_enabled(state);
     let gpus = &state.gpu_infos;
 
     if gpus.is_empty() {
-        let block = styled_block("GPU", theme.gpu);
+        let block = styled_block("GPU", theme.gpu, truecolor);
         let text = Paragraph::new(
             "No GPUs detected (install NVIDIA drivers for NVIDIA, or load amdgpu driver for AMD)",
         )
@@ -282,8 +362,8 @@ fn render_gpu(f: &mut Frame, area: Rect, state: &AppState) {
         let uc = color_for_pct(g.util, theme);
         let mc = color_for_pct(g.mem_pct, theme);
 
-        let util_bar = bar_spans(g.util, bar_w, theme, state.steady_render);
-        let mem_bar = bar_spans(g.mem_pct, bar_w, theme, state.steady_render);
+        let util_bar = bar_spans(g.util, bar_w, theme, state.steady_render, truecolor);
+        let mem_bar = bar_spans(g.mem_pct, bar_w, theme, state.steady_render, truecolor);
 
         let spark_u = if state.steady_render {
             String::new()
@@ -314,14 +394,14 @@ fn render_gpu(f: &mut Frame, area: Rect, state: &AppState) {
         util_line.extend(util_bar);
         util_line.push(Span::styled(
             format!(" {:5.1}%", g.util),
-            Style::default().fg(uc),
+            Style::default().fg(display_color(uc, truecolor)),
         ));
         lines.push(Line::from(util_line));
 
         // Util sparkline
         lines.push(Line::from(Span::styled(
             format!("     {}", spark_u),
-            Style::default().fg(uc),
+            Style::default().fg(display_color(uc, truecolor)),
         )));
         lines.push(Line::from(""));
 
@@ -333,7 +413,7 @@ fn render_gpu(f: &mut Frame, area: Rect, state: &AppState) {
         mem_line.extend(mem_bar);
         mem_line.push(Span::styled(
             format!(" {:5.1}%", g.mem_pct),
-            Style::default().fg(mc),
+            Style::default().fg(display_color(mc, truecolor)),
         ));
         lines.push(Line::from(mem_line));
 
@@ -346,7 +426,7 @@ fn render_gpu(f: &mut Frame, area: Rect, state: &AppState) {
         // Mem sparkline
         lines.push(Line::from(Span::styled(
             format!("     {}", spark_m),
-            Style::default().fg(mc),
+            Style::default().fg(display_color(mc, truecolor)),
         )));
 
         let name_short = g
@@ -356,12 +436,12 @@ fn render_gpu(f: &mut Frame, area: Rect, state: &AppState) {
             .replace("Advanced Micro Devices, Inc. ", "")
             .replace(" Generation", "");
 
-        let block = styled_block(&format!("GPU {}", g.id), theme.gpu).title_bottom(Line::from(
-            Span::styled(
+        let block = styled_block(&format!("GPU {}", g.id), theme.gpu, truecolor).title_bottom(
+            Line::from(Span::styled(
                 format!(" {} ", name_short),
                 muted_style(state.steady_render),
-            ),
-        ));
+            )),
+        );
 
         let paragraph = Paragraph::new(lines).block(block);
         f.render_widget(paragraph, gpu_chunks[i]);
@@ -385,13 +465,14 @@ fn render_mid_row(f: &mut Frame, area: Rect, state: &AppState) {
 
 fn render_cpu(f: &mut Frame, area: Rect, state: &AppState) {
     let theme = &state.theme;
+    let truecolor = truecolor_enabled(state);
     let pct = state.cpu_pct;
     let c = color_for_pct(pct, theme);
     let inner_w = area.width.saturating_sub(4) as usize;
     let bar_w = inner_w.saturating_sub(18).max(5);
     let spark_w = inner_w.saturating_sub(10).max(10);
 
-    let cpu_bar = bar_spans(pct, bar_w, theme, state.steady_render);
+    let cpu_bar = bar_spans(pct, bar_w, theme, state.steady_render, truecolor);
     let (spark_top, spark_bot) = if state.steady_render {
         (String::new(), String::new())
     } else {
@@ -406,7 +487,7 @@ fn render_cpu(f: &mut Frame, area: Rect, state: &AppState) {
     overall.extend(cpu_bar);
     overall.push(Span::styled(
         format!(" {:5.1}%", pct),
-        Style::default().fg(c),
+        Style::default().fg(display_color(c, truecolor)),
     ));
     lines.push(Line::from(overall));
 
@@ -424,20 +505,21 @@ fn render_cpu(f: &mut Frame, area: Rect, state: &AppState) {
     )));
     lines.push(Line::from(Span::styled(
         format!("         {}", spark_top),
-        Style::default().fg(c),
+        Style::default().fg(display_color(c, truecolor)),
     )));
     lines.push(Line::from(Span::styled(
         format!("         {}", spark_bot),
-        Style::default().fg(c),
+        Style::default().fg(display_color(c, truecolor)),
     )));
 
-    let block = styled_block("CPU", theme.cpu);
+    let block = styled_block("CPU", theme.cpu, truecolor);
 
     f.render_widget(Paragraph::new(lines).block(block), area);
 }
 
 fn render_net(f: &mut Frame, area: Rect, state: &AppState) {
     let theme = &state.theme;
+    let truecolor = truecolor_enabled(state);
     let (up, down) = (state.net_up, state.net_down);
     let mx = state.net_max_speed;
     let up_pct = if mx > 0.0 {
@@ -455,8 +537,8 @@ fn render_net(f: &mut Frame, area: Rect, state: &AppState) {
     let bar_w = inner_w.saturating_sub(18).max(5);
     let spark_w = inner_w.saturating_sub(6).max(10);
 
-    let up_bar = bar_spans(up_pct, bar_w, theme, state.steady_render);
-    let down_bar = bar_spans(down_pct, bar_w, theme, state.steady_render);
+    let up_bar = bar_spans(up_pct, bar_w, theme, state.steady_render, truecolor);
+    let down_bar = bar_spans(down_pct, bar_w, theme, state.steady_render, truecolor);
 
     let (spark_up_str, spark_dn_str) = if state.steady_render {
         (String::new(), String::new())
@@ -486,17 +568,17 @@ fn render_net(f: &mut Frame, area: Rect, state: &AppState) {
     up_line.extend(up_bar);
     up_line.push(Span::styled(
         format!(" {:>10}", fmt_speed(up)),
-        Style::default().fg(theme.net_up),
+        Style::default().fg(display_color(theme.net_up, truecolor)),
     ));
     lines.push(Line::from(up_line));
     lines.push(Line::from(""));
     lines.push(Line::from(Span::styled(
         format!("     {}", spark_up_str),
-        Style::default().fg(theme.net_up),
+        Style::default().fg(display_color(theme.net_up, truecolor)),
     )));
     lines.push(Line::from(Span::styled(
         format!("     {}", spark_dn_str),
-        Style::default().fg(theme.net_down),
+        Style::default().fg(display_color(theme.net_down, truecolor)),
     )));
     lines.push(Line::from(""));
 
@@ -507,7 +589,7 @@ fn render_net(f: &mut Frame, area: Rect, state: &AppState) {
     down_line.extend(down_bar);
     down_line.push(Span::styled(
         format!(" {:>10}", fmt_speed(down)),
-        Style::default().fg(theme.net_down),
+        Style::default().fg(display_color(theme.net_down, truecolor)),
     ));
     lines.push(Line::from(down_line));
     lines.push(Line::from(""));
@@ -516,22 +598,23 @@ fn render_net(f: &mut Frame, area: Rect, state: &AppState) {
         muted_style(state.steady_render),
     )));
 
-    let block = styled_block("Network", theme.net);
+    let block = styled_block("Network", theme.net, truecolor);
 
     f.render_widget(Paragraph::new(lines).block(block), area);
 }
 
 fn render_mem(f: &mut Frame, area: Rect, state: &AppState) {
     let theme = &state.theme;
+    let truecolor = truecolor_enabled(state);
     let inner_w = area.width.saturating_sub(4) as usize;
     let bar_w = inner_w.saturating_sub(14).max(5);
 
     let ram_pct = state.ram_pct;
     let rc = color_for_pct(ram_pct, theme);
-    let ram_bar = bar_spans(ram_pct, bar_w, theme, state.steady_render);
+    let ram_bar = bar_spans(ram_pct, bar_w, theme, state.steady_render, truecolor);
 
     let swap_pct = state.swap_pct;
-    let swap_bar = bar_spans(swap_pct, bar_w, theme, state.steady_render);
+    let swap_bar = bar_spans(swap_pct, bar_w, theme, state.steady_render, truecolor);
 
     let mut lines = Vec::new();
     let mut ram_line = vec![Span::styled(
@@ -541,7 +624,7 @@ fn render_mem(f: &mut Frame, area: Rect, state: &AppState) {
     ram_line.extend(ram_bar);
     ram_line.push(Span::styled(
         format!(" {:5.1}%", ram_pct),
-        Style::default().fg(rc),
+        Style::default().fg(display_color(rc, truecolor)),
     ));
     lines.push(Line::from(ram_line));
     lines.push(Line::from(format!(
@@ -578,13 +661,14 @@ fn render_mem(f: &mut Frame, area: Rect, state: &AppState) {
         muted_style(state.steady_render),
     )));
 
-    let block = styled_block("Memory", theme.mem);
+    let block = styled_block("Memory", theme.mem, truecolor);
 
     f.render_widget(Paragraph::new(lines).block(block), area);
 }
 
 fn render_temps(f: &mut Frame, area: Rect, state: &AppState) {
     let theme = &state.theme;
+    let truecolor = truecolor_enabled(state);
     let mut cells: Vec<Vec<Span>> = Vec::new();
 
     if let Some(cpu_t) = state.cpu_temp {
@@ -594,6 +678,7 @@ fn render_temps(f: &mut Frame, area: Rect, state: &AppState) {
             state.cpu_temp_max,
             theme,
             state.steady_render,
+            truecolor,
         ));
     }
     if let Some(mem_t) = state.mem_temp {
@@ -603,6 +688,7 @@ fn render_temps(f: &mut Frame, area: Rect, state: &AppState) {
             state.mem_temp_max,
             theme,
             state.steady_render,
+            truecolor,
         ));
     }
     for (i, gt) in state.gpu_temps.iter().enumerate() {
@@ -613,6 +699,7 @@ fn render_temps(f: &mut Frame, area: Rect, state: &AppState) {
                 t.max,
                 theme,
                 state.steady_render,
+                truecolor,
             ));
         } else {
             cells.push(temp_cell_na(&format!("GPU{}", i), state.steady_render));
@@ -620,7 +707,7 @@ fn render_temps(f: &mut Frame, area: Rect, state: &AppState) {
     }
 
     if cells.is_empty() {
-        let block = styled_block("Temps", theme.bar_mid);
+        let block = styled_block("Temps", theme.bar_mid, truecolor);
         f.render_widget(
             Paragraph::new("No temperature data")
                 .style(muted_style(state.steady_render))
@@ -633,7 +720,7 @@ fn render_temps(f: &mut Frame, area: Rect, state: &AppState) {
     let ncols = cells.len();
 
     // We render as a single panel
-    let block = styled_block("Temps", theme.bar_mid);
+    let block = styled_block("Temps", theme.bar_mid, truecolor);
 
     let inner = block.inner(area);
     f.render_widget(block, area);
@@ -654,7 +741,14 @@ fn render_temps(f: &mut Frame, area: Rect, state: &AppState) {
     }
 }
 
-fn temp_cell(label: &str, temp: f64, max: f64, theme: &Theme, steady: bool) -> Vec<Span<'static>> {
+fn temp_cell(
+    label: &str,
+    temp: f64,
+    max: f64,
+    theme: &Theme,
+    steady: bool,
+    truecolor: bool,
+) -> Vec<Span<'static>> {
     let pct = (temp / max * 100.0).min(100.0);
     let ratio = temp / max;
     let c = if ratio < 0.6 {
@@ -665,6 +759,7 @@ fn temp_cell(label: &str, temp: f64, max: f64, theme: &Theme, steady: bool) -> V
         theme.bar_high
     };
     let filled = (pct / 100.0 * 8.0) as usize;
+    let c = display_color(c, truecolor);
     vec![
         Span::styled(format!("{} ", label), muted_bold_style(steady)),
         Span::styled("█".repeat(filled), Style::default().fg(c)),
@@ -692,6 +787,7 @@ fn render_procs(f: &mut Frame, area: Rect, state: &AppState) {
 
 fn render_proc_table(f: &mut Frame, area: Rect, state: &AppState, by_mem: bool) {
     let theme = &state.theme;
+    let truecolor = truecolor_enabled(state);
     let procs = if by_mem {
         &state.procs_by_mem
     } else {
@@ -771,31 +867,54 @@ fn render_proc_table(f: &mut Frame, area: Rect, state: &AppState, by_mem: bool) 
         ]
     };
 
-    let table = Table::new(rows, widths)
-        .header(header)
-        .block(styled_block(title.trim(), colour));
+    let table = Table::new(rows, widths).header(header).block(styled_block(
+        title.trim(),
+        colour,
+        truecolor,
+    ));
 
     f.render_widget(table, area);
 }
 
 fn render_status_bar(f: &mut Frame, area: Rect, state: &AppState) {
     let theme = &state.theme;
+    let truecolor = truecolor_enabled(state);
+    let color_text = format!(" {}", state.color_mode.label());
     let left_spans = vec![
         Span::styled(
             " q",
-            Style::default().fg(theme.cpu).add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(display_color(theme.cpu, truecolor))
+                .add_modifier(Modifier::BOLD),
         ),
         Span::styled("/", muted_style(state.steady_render)),
         Span::styled(
             "ESC",
-            Style::default().fg(theme.cpu).add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(display_color(theme.cpu, truecolor))
+                .add_modifier(Modifier::BOLD),
         ),
         Span::styled(" Quit  ", muted_style(state.steady_render)),
         Span::styled(
             " t",
-            Style::default().fg(theme.gpu).add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(display_color(theme.gpu, truecolor))
+                .add_modifier(Modifier::BOLD),
         ),
-        Span::styled(" Theme", muted_style(state.steady_render)),
+        Span::styled(" Theme  ", muted_style(state.steady_render)),
+        Span::styled(
+            " c",
+            Style::default()
+                .fg(display_color(theme.net, truecolor))
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(" Color:", muted_style(state.steady_render)),
+        Span::styled(
+            color_text,
+            Style::default()
+                .fg(display_color(theme.net, truecolor))
+                .add_modifier(Modifier::BOLD),
+        ),
     ];
 
     let power_text = match state.est_power_watts {
@@ -822,7 +941,9 @@ fn render_status_bar(f: &mut Frame, area: Rect, state: &AppState) {
     match state.est_power_watts {
         Some(power) => right_spans.push(Span::styled(
             format!("PWR ~{}W  ", power.round() as u64),
-            Style::default().fg(theme.mem).add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(display_color(theme.mem, truecolor))
+                .add_modifier(Modifier::BOLD),
         )),
         None => right_spans.push(Span::styled("PWR n/a  ", muted_style(state.steady_render))),
     }
@@ -830,7 +951,7 @@ fn render_status_bar(f: &mut Frame, area: Rect, state: &AppState) {
         right_spans.push(Span::styled(
             oom_text,
             Style::default()
-                .fg(theme.bar_high)
+                .fg(display_color(theme.bar_high, truecolor))
                 .add_modifier(Modifier::BOLD),
         ));
     } else {
@@ -848,6 +969,7 @@ fn render_status_bar(f: &mut Frame, area: Rect, state: &AppState) {
 fn render_theme_picker(f: &mut Frame, state: &AppState) {
     let area = f.area();
     let names = crate::theme::theme_names();
+    let truecolor = truecolor_enabled(state);
     let cols = 3usize;
     let visible_rows = area.height.saturating_sub(8) as usize;
     let total = names.len();
@@ -880,15 +1002,16 @@ fn render_theme_picker(f: &mut Frame, state: &AppState) {
             if i < total {
                 let name = names[i];
                 let th = crate::theme::get_theme(name);
+                let gpu = display_color(th.gpu, truecolor);
                 let prefix = if i == cursor { " > " } else { "   " };
                 let style = if i == cursor {
                     Style::default()
-                        .fg(th.gpu)
+                        .fg(gpu)
                         .add_modifier(Modifier::BOLD | Modifier::REVERSED)
                 } else if name == state.theme_name {
-                    Style::default().fg(th.gpu).add_modifier(Modifier::BOLD)
+                    Style::default().fg(gpu).add_modifier(Modifier::BOLD)
                 } else {
-                    Style::default().fg(th.gpu)
+                    Style::default().fg(gpu)
                 };
                 let suffix = if name == state.theme_name && i != cursor {
                     " *"
@@ -899,13 +1022,16 @@ fn render_theme_picker(f: &mut Frame, state: &AppState) {
                 let line_spans = vec![
                     Span::styled(format!("{}{}{}", prefix, name, suffix), style),
                     Span::raw(" "),
-                    Span::styled("  ", Style::default().bg(th.gpu)),
+                    Span::styled("  ", Style::default().bg(display_color(th.gpu, truecolor))),
                     Span::raw(" "),
-                    Span::styled("  ", Style::default().bg(th.cpu)),
+                    Span::styled("  ", Style::default().bg(display_color(th.cpu, truecolor))),
                     Span::raw(" "),
-                    Span::styled("  ", Style::default().bg(th.mem)),
+                    Span::styled("  ", Style::default().bg(display_color(th.mem, truecolor))),
                     Span::raw(" "),
-                    Span::styled("  ", Style::default().bg(th.bar_mid)),
+                    Span::styled(
+                        "  ",
+                        Style::default().bg(display_color(th.bar_mid, truecolor)),
+                    ),
                 ];
                 cells.push(Cell::from(Line::from(line_spans)));
             } else {
@@ -916,28 +1042,41 @@ fn render_theme_picker(f: &mut Frame, state: &AppState) {
     }
 
     let widths = vec![Constraint::Ratio(1, 3); cols];
-    let table = Table::new(rows, widths).block(styled_block("Select Theme", Color::White));
+    let table =
+        Table::new(rows, widths).block(styled_block("Select Theme", Color::White, truecolor));
     f.render_widget(table, chunks[0]);
 
     // Preview
     let preview_name = names.get(cursor).unwrap_or(&"Default");
     let preview = crate::theme::get_theme(preview_name);
-    let sample_bar = bar_spans(65.0, 20, &preview, state.steady_render);
+    let sample_bar = bar_spans(65.0, 20, &preview, state.steady_render, truecolor);
     let dash = "\u{2501}".repeat(6); // ━ × 6
     let preview_spans = vec![
         Span::styled("Preview: ", Style::default().add_modifier(Modifier::BOLD)),
         Span::styled(
             format!("{}", preview_name),
-            Style::default().fg(preview.gpu),
+            Style::default().fg(display_color(preview.gpu, truecolor)),
         ),
         Span::raw("  GPU "),
-        Span::styled(dash.clone(), Style::default().fg(preview.gpu)),
+        Span::styled(
+            dash.clone(),
+            Style::default().fg(display_color(preview.gpu, truecolor)),
+        ),
         Span::raw("  Net "),
-        Span::styled(dash.clone(), Style::default().fg(preview.net)),
+        Span::styled(
+            dash.clone(),
+            Style::default().fg(display_color(preview.net, truecolor)),
+        ),
         Span::raw("  CPU "),
-        Span::styled(dash.clone(), Style::default().fg(preview.cpu)),
+        Span::styled(
+            dash.clone(),
+            Style::default().fg(display_color(preview.cpu, truecolor)),
+        ),
         Span::raw("  Mem "),
-        Span::styled(dash, Style::default().fg(preview.mem)),
+        Span::styled(
+            dash,
+            Style::default().fg(display_color(preview.mem, truecolor)),
+        ),
     ];
     let preview_line1 = Line::from(preview_spans);
     let mut bar_line_spans = vec![Span::raw("  Bar: ")];

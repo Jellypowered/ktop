@@ -24,6 +24,7 @@ A terminal-based system resource monitor built for tracking resource usage when 
 - **OOM Kill Tracker** — Status bar shows the most recent OOM kill from the last 8 hours (kernel OOM and systemd-oomd)
 - **Process Tables** — Top 10 processes by memory (Used/Shared) and CPU usage (Core % + system-wide CPU %)
 - **50 Color Themes** — Press `t` to browse and switch themes with live preview; persists across sessions
+- **Color Mode Toggle** — Press `c` to switch between truecolor and basic ANSI colors; persists across sessions
 - **Gradient Bar Charts** — Smooth per-block color gradients from low to high across all bars
 - **Responsive UI** — 50ms input polling for snappy keyboard navigation
 
@@ -94,6 +95,7 @@ ktop uninstall
 |-----|--------|
 | `q` / `ESC` | Quit |
 | `t` | Open theme picker |
+| `c` | Toggle color mode between truecolor and basic ANSI colors |
 | Arrow keys | Navigate theme picker |
 | `Enter` | Select theme |
 
@@ -109,6 +111,8 @@ Compatibility mode disables alternate screen and synchronized redraws, slows the
 It also uses coarse progress bars instead of per-cell gradients, avoids dark-gray ANSI styling and shaded filler glyphs, and clears the current screen on entry/exit so stale styled cells do not remain behind the shell prompt.
 
 You can also set `KTOP_COMPAT=1`.
+
+If a terminal flashes on RGB/truecolor output, press `c` in the main view to switch Color from `Truecolor` to `Basic`. Basic color mode maps theme colors to ANSI colors and is saved in `~/.config/ktop/config.json`.
 
 To check whether a terminal is reporting unstable sizes or repeated resize events:
 
