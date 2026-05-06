@@ -212,8 +212,12 @@ pub fn run(
             if event::poll(Duration::from_millis(50))? {
                 match event::read()? {
                     Event::Key(key) => {
+                        let color_mode_before = state.color_mode;
                         if handle_key(key, &mut state) {
                             break;
+                        }
+                        if state.color_mode != color_mode_before {
+                            reset_and_clear_terminal(&mut terminal)?;
                         }
                         // Immediate redraw on keypress
                         if pending_resize.is_none() {
@@ -439,6 +443,17 @@ fn draw_app(
     }
 
     draw_result?;
+    Ok(())
+}
+
+fn reset_and_clear_terminal(terminal: &mut Terminal<TerminalBackend>) -> io::Result<()> {
+    crossterm::execute!(
+        terminal.backend_mut(),
+        SetAttribute(Attribute::Reset),
+        ResetColor
+    )?;
+    terminal.clear()?;
+    terminal.backend_mut().flush()?;
     Ok(())
 }
 

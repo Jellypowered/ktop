@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.0.16 — 2026-05-06
+
+- Made Basic color mode avoid all extended foreground color SGR output, including indexed `38;5;n` sequences as well as RGB `38;2;r;g;b`
+- Clear/reset the terminal when toggling color mode so stale truecolor-styled cells are repainted immediately
+- Kept truecolor as the default; Basic is now the safest monochrome fallback for terminals that flash on extended foreground color escapes
+- Tested: `cargo check`, debug build, PTY capture with Basic mode showing zero RGB foreground and zero indexed foreground SGR sequences
+
 ## 1.0.15 — 2026-05-06
 
 - Added a main-screen `c Color` toggle that switches between truecolor and basic ANSI color output

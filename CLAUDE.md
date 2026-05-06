@@ -12,6 +12,12 @@ Then copy the binary to install locally:
 
 ## Changelog
 
+### v1.0.16
+- Make Basic color mode avoid all extended foreground color escapes, including indexed `38;5;n` as well as RGB `38;2;r;g;b`
+- Reset/clear the terminal immediately when toggling color mode to repaint stale truecolor-styled cells
+- Keep truecolor as the default; Basic is now the safe monochrome fallback for terminals that flash on extended foreground color sequences
+- Tested: `cargo check`, debug build, PTY capture with zero RGB foreground and zero indexed foreground SGR in Basic mode
+
 ### v1.0.15
 - Add a main-screen `c Color` toggle after `t Theme` to switch between truecolor and basic ANSI colors
 - Persist the selected color mode in `~/.config/ktop/config.json` alongside the theme, with truecolor as the default for existing configs
