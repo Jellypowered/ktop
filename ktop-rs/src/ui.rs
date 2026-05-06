@@ -120,7 +120,27 @@ fn lerp_color(c1: Color, c2: Color, t: f64) -> Color {
     Color::Rgb(r, g, b)
 }
 
-fn bar_spans(pct: f64, width: usize, theme: &Theme) -> Vec<Span<'static>> {
+fn muted_style(steady: bool) -> Style {
+    if steady {
+        Style::default()
+    } else {
+        Style::default().fg(Color::DarkGray)
+    }
+}
+
+fn muted_bold_style(steady: bool) -> Style {
+    muted_style(steady).add_modifier(Modifier::BOLD)
+}
+
+fn empty_bar_span(width: usize, steady: bool) -> Span<'static> {
+    if steady {
+        Span::raw(" ".repeat(width))
+    } else {
+        Span::styled("░".repeat(width), Style::default().fg(Color::DarkGray))
+    }
+}
+
+fn bar_spans(pct: f64, width: usize, theme: &Theme, steady: bool) -> Vec<Span<'static>> {
     let filled = (pct / 100.0 * width as f64) as usize;
     let empty = width.saturating_sub(filled);
     let mut spans = Vec::new();
@@ -130,10 +150,7 @@ fn bar_spans(pct: f64, width: usize, theme: &Theme) -> Vec<Span<'static>> {
         spans.push(Span::styled("█", Style::default().fg(c)));
     }
     if empty > 0 {
-        spans.push(Span::styled(
-            "░".repeat(empty),
-            Style::default().fg(Color::DarkGray),
-        ));
+        spans.push(empty_bar_span(empty, steady));
     }
     spans
 }
@@ -228,7 +245,7 @@ fn render_gpu(f: &mut Frame, area: Rect, state: &AppState) {
         let text = Paragraph::new(
             "No GPUs detected (install NVIDIA drivers for NVIDIA, or load amdgpu driver for AMD)",
         )
-        .style(Style::default().fg(Color::DarkGray))
+        .style(muted_style(state.steady_render))
         .block(block);
         f.render_widget(text, area);
         return;
@@ -251,8 +268,8 @@ fn render_gpu(f: &mut Frame, area: Rect, state: &AppState) {
         let uc = color_for_pct(g.util, theme);
         let mc = color_for_pct(g.mem_pct, theme);
 
-        let util_bar = bar_spans(g.util, bar_w, theme);
-        let mem_bar = bar_spans(g.mem_pct, bar_w, theme);
+        let util_bar = bar_spans(g.util, bar_w, theme, state.steady_render);
+        let mem_bar = bar_spans(g.mem_pct, bar_w, theme, state.steady_render);
 
         let spark_u = if state.steady_render {
             String::new()
@@ -328,7 +345,7 @@ fn render_gpu(f: &mut Frame, area: Rect, state: &AppState) {
         let block = styled_block(&format!("GPU {}", g.id), theme.gpu).title_bottom(Line::from(
             Span::styled(
                 format!(" {} ", name_short),
-                Style::default().fg(Color::DarkGray),
+                muted_style(state.steady_render),
             ),
         ));
 
@@ -360,7 +377,7 @@ fn render_cpu(f: &mut Frame, area: Rect, state: &AppState) {
     let bar_w = inner_w.saturating_sub(18).max(5);
     let spark_w = inner_w.saturating_sub(10).max(10);
 
-    let cpu_bar = bar_spans(pct, bar_w, theme);
+    let cpu_bar = bar_spans(pct, bar_w, theme, state.steady_render);
     let (spark_top, spark_bot) = if state.steady_render {
         (String::new(), String::new())
     } else {
@@ -384,7 +401,7 @@ fn render_cpu(f: &mut Frame, area: Rect, state: &AppState) {
             "Cores: {}  Total: {:.0}%  Freq: {}",
             state.cpu_cores, state.cpu_total_pct, state.cpu_freq
         ),
-        Style::default().fg(Color::DarkGray),
+        muted_style(state.steady_render),
     )));
     lines.push(Line::from(""));
     lines.push(Line::from(Span::styled(
@@ -424,8 +441,8 @@ fn render_net(f: &mut Frame, area: Rect, state: &AppState) {
     let bar_w = inner_w.saturating_sub(18).max(5);
     let spark_w = inner_w.saturating_sub(6).max(10);
 
-    let up_bar = bar_spans(up_pct, bar_w, theme);
-    let down_bar = bar_spans(down_pct, bar_w, theme);
+    let up_bar = bar_spans(up_pct, bar_w, theme, state.steady_render);
+    let down_bar = bar_spans(down_pct, bar_w, theme, state.steady_render);
 
     let (spark_up_str, spark_dn_str) = if state.steady_render {
         (String::new(), String::new())
@@ -482,7 +499,7 @@ fn render_net(f: &mut Frame, area: Rect, state: &AppState) {
     lines.push(Line::from(""));
     lines.push(Line::from(Span::styled(
         format!("Peak: {}", fmt_speed(mx)),
-        Style::default().fg(Color::DarkGray),
+        muted_style(state.steady_render),
     )));
 
     let block = styled_block("Network", theme.net);
@@ -497,10 +514,10 @@ fn render_mem(f: &mut Frame, area: Rect, state: &AppState) {
 
     let ram_pct = state.ram_pct;
     let rc = color_for_pct(ram_pct, theme);
-    let ram_bar = bar_spans(ram_pct, bar_w, theme);
+    let ram_bar = bar_spans(ram_pct, bar_w, theme, state.steady_render);
 
     let swap_pct = state.swap_pct;
-    let swap_bar = bar_spans(swap_pct, bar_w, theme);
+    let swap_bar = bar_spans(swap_pct, bar_w, theme, state.steady_render);
 
     let mut lines = Vec::new();
     let mut ram_line = vec![Span::styled(
@@ -527,7 +544,7 @@ fn render_mem(f: &mut Frame, area: Rect, state: &AppState) {
     swap_line.extend(swap_bar);
     swap_line.push(Span::styled(
         format!(" {:5.1}%", swap_pct),
-        Style::default().fg(Color::DarkGray),
+        muted_style(state.steady_render),
     ));
     lines.push(Line::from(swap_line));
     lines.push(Line::from(Span::styled(
@@ -536,7 +553,7 @@ fn render_mem(f: &mut Frame, area: Rect, state: &AppState) {
             fmt_bytes(state.swap_used as f64),
             fmt_bytes(state.swap_total as f64)
         ),
-        Style::default().fg(Color::DarkGray),
+        muted_style(state.steady_render),
     )));
     lines.push(Line::from(Span::styled(
         format!(
@@ -544,7 +561,7 @@ fn render_mem(f: &mut Frame, area: Rect, state: &AppState) {
             fmt_bytes(state.ram_available as f64),
             fmt_bytes(state.ram_cached as f64)
         ),
-        Style::default().fg(Color::DarkGray),
+        muted_style(state.steady_render),
     )));
 
     let block = styled_block("Memory", theme.mem);
@@ -557,16 +574,34 @@ fn render_temps(f: &mut Frame, area: Rect, state: &AppState) {
     let mut cells: Vec<Vec<Span>> = Vec::new();
 
     if let Some(cpu_t) = state.cpu_temp {
-        cells.push(temp_cell("CPU", cpu_t, state.cpu_temp_max, theme));
+        cells.push(temp_cell(
+            "CPU",
+            cpu_t,
+            state.cpu_temp_max,
+            theme,
+            state.steady_render,
+        ));
     }
     if let Some(mem_t) = state.mem_temp {
-        cells.push(temp_cell("MEM", mem_t, state.mem_temp_max, theme));
+        cells.push(temp_cell(
+            "MEM",
+            mem_t,
+            state.mem_temp_max,
+            theme,
+            state.steady_render,
+        ));
     }
     for (i, gt) in state.gpu_temps.iter().enumerate() {
         if let Some(t) = gt {
-            cells.push(temp_cell(&format!("GPU{}", i), t.temp, t.max, theme));
+            cells.push(temp_cell(
+                &format!("GPU{}", i),
+                t.temp,
+                t.max,
+                theme,
+                state.steady_render,
+            ));
         } else {
-            cells.push(temp_cell_na(&format!("GPU{}", i)));
+            cells.push(temp_cell_na(&format!("GPU{}", i), state.steady_render));
         }
     }
 
@@ -574,7 +609,7 @@ fn render_temps(f: &mut Frame, area: Rect, state: &AppState) {
         let block = styled_block("Temps", theme.bar_mid);
         f.render_widget(
             Paragraph::new("No temperature data")
-                .style(Style::default().fg(Color::DarkGray))
+                .style(muted_style(state.steady_render))
                 .block(block),
             area,
         );
@@ -605,7 +640,7 @@ fn render_temps(f: &mut Frame, area: Rect, state: &AppState) {
     }
 }
 
-fn temp_cell(label: &str, temp: f64, max: f64, theme: &Theme) -> Vec<Span<'static>> {
+fn temp_cell(label: &str, temp: f64, max: f64, theme: &Theme, steady: bool) -> Vec<Span<'static>> {
     let pct = (temp / max * 100.0).min(100.0);
     let ratio = temp / max;
     let c = if ratio < 0.6 {
@@ -617,27 +652,17 @@ fn temp_cell(label: &str, temp: f64, max: f64, theme: &Theme) -> Vec<Span<'stati
     };
     let filled = (pct / 100.0 * 8.0) as usize;
     vec![
-        Span::styled(
-            format!("{} ", label),
-            Style::default()
-                .fg(Color::DarkGray)
-                .add_modifier(Modifier::BOLD),
-        ),
+        Span::styled(format!("{} ", label), muted_bold_style(steady)),
         Span::styled("█".repeat(filled), Style::default().fg(c)),
-        Span::styled("░".repeat(8 - filled), Style::default().fg(Color::DarkGray)),
+        empty_bar_span(8 - filled, steady),
         Span::styled(format!(" {:.0}/{:.0}°C", temp, max), Style::default().fg(c)),
     ]
 }
 
-fn temp_cell_na(label: &str) -> Vec<Span<'static>> {
+fn temp_cell_na(label: &str, steady: bool) -> Vec<Span<'static>> {
     vec![
-        Span::styled(
-            format!("{} ", label),
-            Style::default()
-                .fg(Color::DarkGray)
-                .add_modifier(Modifier::BOLD),
-        ),
-        Span::styled("N/A", Style::default().fg(Color::DarkGray)),
+        Span::styled(format!("{} ", label), muted_bold_style(steady)),
+        Span::styled("N/A", muted_style(steady)),
     ]
 }
 
@@ -672,11 +697,7 @@ fn render_proc_table(f: &mut Frame, area: Rect, state: &AppState, by_mem: bool) 
     let bold = Style::default().add_modifier(Modifier::BOLD);
     let header = if by_mem {
         Row::new(vec![
-            Cell::from("PID").style(
-                Style::default()
-                    .fg(Color::DarkGray)
-                    .add_modifier(Modifier::BOLD),
-            ),
+            Cell::from("PID").style(muted_bold_style(state.steady_render)),
             Cell::from("Name").style(bold),
             Cell::from("Used").style(bold),
             Cell::from("Shared").style(bold),
@@ -684,11 +705,7 @@ fn render_proc_table(f: &mut Frame, area: Rect, state: &AppState, by_mem: bool) 
         ])
     } else {
         Row::new(vec![
-            Cell::from("PID").style(
-                Style::default()
-                    .fg(Color::DarkGray)
-                    .add_modifier(Modifier::BOLD),
-            ),
+            Cell::from("PID").style(muted_bold_style(state.steady_render)),
             Cell::from("Name").style(bold),
             Cell::from("Core %").style(bold),
             Cell::from("CPU %").style(bold),
@@ -703,7 +720,7 @@ fn render_proc_table(f: &mut Frame, area: Rect, state: &AppState, by_mem: bool) 
                 let shared = p.shared;
                 let used = if p.rss > shared { p.rss - shared } else { 0 };
                 Row::new(vec![
-                    Cell::from(format!("{}", p.pid)).style(Style::default().fg(Color::DarkGray)),
+                    Cell::from(format!("{}", p.pid)).style(muted_style(state.steady_render)),
                     Cell::from(p.name.clone()),
                     Cell::from(fmt_bytes(used as f64)),
                     Cell::from(fmt_bytes(shared as f64)),
@@ -712,7 +729,7 @@ fn render_proc_table(f: &mut Frame, area: Rect, state: &AppState, by_mem: bool) 
             } else {
                 let sys_pct = p.cpu_percent / state.num_cpus as f64;
                 Row::new(vec![
-                    Cell::from(format!("{}", p.pid)).style(Style::default().fg(Color::DarkGray)),
+                    Cell::from(format!("{}", p.pid)).style(muted_style(state.steady_render)),
                     Cell::from(p.name.clone()),
                     Cell::from(format!("{:.1}%", p.cpu_percent)),
                     Cell::from(format!("{:.1}%", sys_pct)),
@@ -754,17 +771,17 @@ fn render_status_bar(f: &mut Frame, area: Rect, state: &AppState) {
             " q",
             Style::default().fg(theme.cpu).add_modifier(Modifier::BOLD),
         ),
-        Span::styled("/", Style::default().fg(Color::DarkGray)),
+        Span::styled("/", muted_style(state.steady_render)),
         Span::styled(
             "ESC",
             Style::default().fg(theme.cpu).add_modifier(Modifier::BOLD),
         ),
-        Span::styled(" Quit  ", Style::default().fg(Color::DarkGray)),
+        Span::styled(" Quit  ", muted_style(state.steady_render)),
         Span::styled(
             " t",
             Style::default().fg(theme.gpu).add_modifier(Modifier::BOLD),
         ),
-        Span::styled(" Theme", Style::default().fg(Color::DarkGray)),
+        Span::styled(" Theme", muted_style(state.steady_render)),
     ];
 
     let power_text = match state.est_power_watts {
@@ -773,6 +790,8 @@ fn render_status_bar(f: &mut Frame, area: Rect, state: &AppState) {
     };
     let oom_text = if let Some(ref oom) = state.oom_str {
         format!("█ OOM Kill: {}", oom)
+    } else if state.steady_render {
+        "  No OOM kills".to_string()
     } else {
         "░ No OOM kills".to_string()
     };
@@ -791,10 +810,7 @@ fn render_status_bar(f: &mut Frame, area: Rect, state: &AppState) {
             format!("PWR ~{}W  ", power.round() as u64),
             Style::default().fg(theme.mem).add_modifier(Modifier::BOLD),
         )),
-        None => right_spans.push(Span::styled(
-            "PWR n/a  ",
-            Style::default().fg(Color::DarkGray),
-        )),
+        None => right_spans.push(Span::styled("PWR n/a  ", muted_style(state.steady_render))),
     }
     if state.oom_str.is_some() {
         right_spans.push(Span::styled(
@@ -804,7 +820,7 @@ fn render_status_bar(f: &mut Frame, area: Rect, state: &AppState) {
                 .add_modifier(Modifier::BOLD),
         ));
     } else {
-        right_spans.push(Span::styled(oom_text, Style::default().fg(Color::DarkGray)));
+        right_spans.push(Span::styled(oom_text, muted_style(state.steady_render)));
     }
 
     f.render_widget(
@@ -892,7 +908,7 @@ fn render_theme_picker(f: &mut Frame, state: &AppState) {
     // Preview
     let preview_name = names.get(cursor).unwrap_or(&"Default");
     let preview = crate::theme::get_theme(preview_name);
-    let sample_bar = bar_spans(65.0, 20, &preview);
+    let sample_bar = bar_spans(65.0, 20, &preview, state.steady_render);
     let dash = "\u{2501}".repeat(6); // ━ × 6
     let preview_spans = vec![
         Span::styled("Preview: ", Style::default().add_modifier(Modifier::BOLD)),
@@ -917,7 +933,7 @@ fn render_theme_picker(f: &mut Frame, state: &AppState) {
     let preview_block = Block::default()
         .borders(Borders::ALL)
         .border_type(BorderType::Rounded)
-        .border_style(Style::default().fg(Color::DarkGray));
+        .border_style(muted_style(state.steady_render));
     f.render_widget(
         Paragraph::new(vec![Line::from(""), preview_line1, preview_line2]).block(preview_block),
         chunks[1],

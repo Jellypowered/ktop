@@ -105,8 +105,8 @@ If a web or remote-support terminal flashes while repainting, try:
 ktop --compat
 ```
 
-Compatibility mode disables alternate screen and synchronized redraws, skips startup clears, and slows the default refresh to 2s.
-It also uses lower-churn rendering by suppressing moving sparklines and refreshing process tables less often.
+Compatibility mode disables alternate screen and synchronized redraws, slows the default refresh to 2s, and uses lower-churn rendering by suppressing moving sparklines and refreshing process tables less often.
+It also avoids dark-gray ANSI styling and shaded filler glyphs, and clears the current screen on entry/exit so stale styled cells do not remain behind the shell prompt.
 
 You can also set `KTOP_COMPAT=1`.
 

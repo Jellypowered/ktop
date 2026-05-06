@@ -12,6 +12,11 @@ Then copy the binary to install locally:
 
 ## Changelog
 
+### v1.0.13
+- Make `--compat` avoid dark-gray ANSI styling and shaded filler glyphs for terminals that animate stale gray cells after process exit
+- Clear/reset the current screen on compat entry/exit so stale TUI cells do not remain behind the shell prompt
+- Reset terminal attributes and colors during cleanup
+
 ### v1.0.12
 - Smooth process CPU percentages before sorting/display to reduce lower-screen row churn
 - Add deterministic process-table tie breakers

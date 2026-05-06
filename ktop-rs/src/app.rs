@@ -6,8 +6,9 @@ use crate::ui;
 
 use crossterm::cursor::{Hide, Show};
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyModifiers};
+use crossterm::style::{Attribute, ResetColor, SetAttribute};
 use crossterm::terminal::{
-    self, BeginSynchronizedUpdate, EndSynchronizedUpdate, EnterAlternateScreen,
+    self, BeginSynchronizedUpdate, Clear, ClearType, EndSynchronizedUpdate, EnterAlternateScreen,
     LeaveAlternateScreen,
 };
 use crossterm::QueueableCommand;
@@ -150,7 +151,7 @@ pub fn run(
             viewport: Viewport::Fixed(active_area),
         },
     )?;
-    if !compat && !no_alt_screen {
+    if !no_alt_screen || compat {
         terminal.clear()?;
     }
 
@@ -363,7 +364,7 @@ pub fn run(
     })();
 
     // Cleanup
-    let cleanup_result = restore_terminal(&mut terminal, !no_alt_screen);
+    let cleanup_result = restore_terminal(&mut terminal, !no_alt_screen, compat);
     match (result, cleanup_result) {
         (Ok(()), Ok(())) => Ok(()),
         (Ok(()), Err(e)) => Err(Box::new(e)),
@@ -439,11 +440,23 @@ fn draw_app(
 fn restore_terminal(
     terminal: &mut Terminal<CrosstermBackend<io::Stdout>>,
     alt_screen: bool,
+    compat: bool,
 ) -> io::Result<()> {
     terminal::disable_raw_mode()?;
-    crossterm::execute!(terminal.backend_mut(), Show)?;
+    crossterm::execute!(
+        terminal.backend_mut(),
+        SetAttribute(Attribute::Reset),
+        ResetColor,
+        Show
+    )?;
     if alt_screen {
         crossterm::execute!(terminal.backend_mut(), LeaveAlternateScreen)?;
+    } else if compat {
+        crossterm::execute!(
+            terminal.backend_mut(),
+            Clear(ClearType::All),
+            crossterm::cursor::MoveTo(0, 0)
+        )?;
     } else {
         writeln!(terminal.backend_mut())?;
     }

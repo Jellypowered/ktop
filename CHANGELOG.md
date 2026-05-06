@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.13 — 2026-05-06
+
+- Made `--compat` avoid dark-gray ANSI styling and shaded filler glyphs, which can animate or flash in some remote terminals even after ktop exits
+- Compatibility mode now clears the current screen on entry and exit so stale styled cells do not remain behind the shell prompt
+- Reset terminal attributes and colors during cleanup before returning control to the shell
+
 ## 1.0.12 — 2026-05-06
 
 - Reduced lower-screen repaint churn by smoothing process CPU percentages before sorting/display
