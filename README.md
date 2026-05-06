@@ -35,6 +35,18 @@ curl -sSfL https://raw.githubusercontent.com/brontoguana/ktop/master/install.sh 
 
 Downloads the latest binary and installs it to `/usr/local/bin` (will prompt for sudo if needed). Run the same command again to upgrade.
 
+Installed versions can also update themselves:
+
+```bash
+ktop update
+```
+
+To remove only the installed `ktop` executable and leave user config untouched:
+
+```bash
+ktop uninstall
+```
+
 ### Build from source
 
 ```bash
@@ -59,8 +71,15 @@ ktop --theme "Tokyo Night"
 # Simulation mode (fake OOM kills, profiling to /tmp/ktop_profile.log)
 ktop --sim
 
+# Remote terminal fallback if the display flashes
+ktop --no-alt-screen
+
 # Show version
 ktop --version
+
+# Update or remove ktop
+ktop update
+ktop uninstall
 ```
 
 ### Keybindings
@@ -71,6 +90,16 @@ ktop --version
 | `t` | Open theme picker |
 | Arrow keys | Navigate theme picker |
 | `Enter` | Select theme |
+
+### Remote Terminal Compatibility
+
+If a web or remote-support terminal flashes while repainting, try:
+
+```bash
+KTOP_NO_ALT_SCREEN=1 ktop
+```
+
+If synchronized redraws render incorrectly in that terminal, add `--no-sync`.
 
 ## Requirements
 

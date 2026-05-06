@@ -1,14 +1,24 @@
 use crate::app::AppState;
 use crate::theme::Theme;
 use ratatui::layout::{Alignment, Constraint, Direction, Layout, Margin, Rect};
-use ratatui::style::{Color, Style, Modifier};
+use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, BorderType, Borders, Cell, Paragraph, Row, Table};
 use ratatui::Frame;
 use std::collections::VecDeque;
 
 const SPARK: &[char] = &[' ', '▁', '▂', '▃', '▄', '▅', '▆', '▇', '█'];
-const SPARK_DOWN: &[char] = &[' ', '▔', '\u{1FB82}', '\u{1FB83}', '▀', '\u{1FB84}', '\u{1FB85}', '\u{1FB86}', '█'];
+const SPARK_DOWN: &[char] = &[
+    ' ',
+    '▔',
+    '\u{1FB82}',
+    '\u{1FB83}',
+    '▀',
+    '\u{1FB84}',
+    '\u{1FB85}',
+    '\u{1FB86}',
+    '█',
+];
 
 // ── Sparkline helpers ──
 
@@ -174,7 +184,10 @@ fn styled_block<'a>(title: &str, color: Color) -> Block<'a> {
 }
 
 fn with_margin(area: Rect) -> Rect {
-    area.inner(Margin { vertical: 0, horizontal: 1 })
+    area.inner(Margin {
+        vertical: 0,
+        horizontal: 1,
+    })
 }
 
 // ── Main render function ──
@@ -191,11 +204,11 @@ pub fn render(f: &mut Frame, state: &AppState) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Fill(2), // GPU
-            Constraint::Fill(2), // mid row
-            Constraint::Length(3),     // temps
-            Constraint::Fill(3), // procs
-            Constraint::Length(1),     // status bar
+            Constraint::Fill(2),   // GPU
+            Constraint::Fill(2),   // mid row
+            Constraint::Length(3), // temps
+            Constraint::Fill(3),   // procs
+            Constraint::Length(1), // status bar
         ])
         .split(area);
 
@@ -212,14 +225,19 @@ fn render_gpu(f: &mut Frame, area: Rect, state: &AppState) {
 
     if gpus.is_empty() {
         let block = styled_block("GPU", theme.gpu);
-        let text = Paragraph::new("No GPUs detected (install NVIDIA drivers for NVIDIA, or load amdgpu driver for AMD)")
-            .style(Style::default().fg(Color::DarkGray))
-            .block(block);
+        let text = Paragraph::new(
+            "No GPUs detected (install NVIDIA drivers for NVIDIA, or load amdgpu driver for AMD)",
+        )
+        .style(Style::default().fg(Color::DarkGray))
+        .block(block);
         f.render_widget(text, area);
         return;
     }
 
-    let constraints: Vec<Constraint> = gpus.iter().map(|_| Constraint::Ratio(1, gpus.len() as u32)).collect();
+    let constraints: Vec<Constraint> = gpus
+        .iter()
+        .map(|_| Constraint::Ratio(1, gpus.len() as u32))
+        .collect();
     let gpu_chunks = Layout::default()
         .direction(Direction::Horizontal)
         .constraints(constraints)
@@ -236,44 +254,75 @@ fn render_gpu(f: &mut Frame, area: Rect, state: &AppState) {
         let util_bar = bar_spans(g.util, bar_w, theme);
         let mem_bar = bar_spans(g.mem_pct, bar_w, theme);
 
-        let spark_u = state.gpu_util_hist.get(&g.id).map(|h| sparkline(h, spark_w)).unwrap_or_default();
-        let spark_m = state.gpu_mem_hist.get(&g.id).map(|h| sparkline(h, spark_w)).unwrap_or_default();
+        let spark_u = state
+            .gpu_util_hist
+            .get(&g.id)
+            .map(|h| sparkline(h, spark_w))
+            .unwrap_or_default();
+        let spark_m = state
+            .gpu_mem_hist
+            .get(&g.id)
+            .map(|h| sparkline(h, spark_w))
+            .unwrap_or_default();
 
         let mut lines = Vec::new();
 
         // Util line
-        let mut util_line = vec![Span::styled("Util ", Style::default().add_modifier(Modifier::BOLD))];
+        let mut util_line = vec![Span::styled(
+            "Util ",
+            Style::default().add_modifier(Modifier::BOLD),
+        )];
         util_line.extend(util_bar);
-        util_line.push(Span::styled(format!(" {:5.1}%", g.util), Style::default().fg(uc)));
+        util_line.push(Span::styled(
+            format!(" {:5.1}%", g.util),
+            Style::default().fg(uc),
+        ));
         lines.push(Line::from(util_line));
 
         // Util sparkline
-        lines.push(Line::from(Span::styled(format!("     {}", spark_u), Style::default().fg(uc))));
+        lines.push(Line::from(Span::styled(
+            format!("     {}", spark_u),
+            Style::default().fg(uc),
+        )));
         lines.push(Line::from(""));
 
         // Mem line
-        let mut mem_line = vec![Span::styled("Mem  ", Style::default().add_modifier(Modifier::BOLD))];
+        let mut mem_line = vec![Span::styled(
+            "Mem  ",
+            Style::default().add_modifier(Modifier::BOLD),
+        )];
         mem_line.extend(mem_bar);
-        mem_line.push(Span::styled(format!(" {:5.1}%", g.mem_pct), Style::default().fg(mc)));
+        mem_line.push(Span::styled(
+            format!(" {:5.1}%", g.mem_pct),
+            Style::default().fg(mc),
+        ));
         lines.push(Line::from(mem_line));
 
         // Mem info
-        lines.push(Line::from(format!("     {:.1}/{:.1} GB", g.mem_used_gb, g.mem_total_gb)));
+        lines.push(Line::from(format!(
+            "     {:.1}/{:.1} GB",
+            g.mem_used_gb, g.mem_total_gb
+        )));
 
         // Mem sparkline
-        lines.push(Line::from(Span::styled(format!("     {}", spark_m), Style::default().fg(mc))));
+        lines.push(Line::from(Span::styled(
+            format!("     {}", spark_m),
+            Style::default().fg(mc),
+        )));
 
-        let name_short = g.name
+        let name_short = g
+            .name
             .replace("NVIDIA ", "")
             .replace("AMD ", "")
             .replace("Advanced Micro Devices, Inc. ", "")
             .replace(" Generation", "");
 
-        let block = styled_block(&format!("GPU {}", g.id), theme.gpu)
-            .title_bottom(Line::from(Span::styled(
+        let block = styled_block(&format!("GPU {}", g.id), theme.gpu).title_bottom(Line::from(
+            Span::styled(
                 format!(" {} ", name_short),
                 Style::default().fg(Color::DarkGray),
-            )));
+            ),
+        ));
 
         let paragraph = Paragraph::new(lines).block(block);
         f.render_widget(paragraph, gpu_chunks[i]);
@@ -307,9 +356,15 @@ fn render_cpu(f: &mut Frame, area: Rect, state: &AppState) {
     let (spark_top, spark_bot) = sparkline_double(&state.cpu_hist, spark_w);
 
     let mut lines = Vec::new();
-    let mut overall = vec![Span::styled("Overall  ", Style::default().add_modifier(Modifier::BOLD))];
+    let mut overall = vec![Span::styled(
+        "Overall  ",
+        Style::default().add_modifier(Modifier::BOLD),
+    )];
     overall.extend(cpu_bar);
-    overall.push(Span::styled(format!(" {:5.1}%", pct), Style::default().fg(c)));
+    overall.push(Span::styled(
+        format!(" {:5.1}%", pct),
+        Style::default().fg(c),
+    ));
     lines.push(Line::from(overall));
 
     lines.push(Line::from(Span::styled(
@@ -320,9 +375,18 @@ fn render_cpu(f: &mut Frame, area: Rect, state: &AppState) {
         Style::default().fg(Color::DarkGray),
     )));
     lines.push(Line::from(""));
-    lines.push(Line::from(Span::styled("History", Style::default().add_modifier(Modifier::BOLD))));
-    lines.push(Line::from(Span::styled(format!("         {}", spark_top), Style::default().fg(c))));
-    lines.push(Line::from(Span::styled(format!("         {}", spark_bot), Style::default().fg(c))));
+    lines.push(Line::from(Span::styled(
+        "History",
+        Style::default().add_modifier(Modifier::BOLD),
+    )));
+    lines.push(Line::from(Span::styled(
+        format!("         {}", spark_top),
+        Style::default().fg(c),
+    )));
+    lines.push(Line::from(Span::styled(
+        format!("         {}", spark_bot),
+        Style::default().fg(c),
+    )));
 
     let block = styled_block("CPU", theme.cpu);
 
@@ -333,8 +397,16 @@ fn render_net(f: &mut Frame, area: Rect, state: &AppState) {
     let theme = &state.theme;
     let (up, down) = (state.net_up, state.net_down);
     let mx = state.net_max_speed;
-    let up_pct = if mx > 0.0 { (up / mx * 100.0).min(100.0) } else { 0.0 };
-    let down_pct = if mx > 0.0 { (down / mx * 100.0).min(100.0) } else { 0.0 };
+    let up_pct = if mx > 0.0 {
+        (up / mx * 100.0).min(100.0)
+    } else {
+        0.0
+    };
+    let down_pct = if mx > 0.0 {
+        (down / mx * 100.0).min(100.0)
+    } else {
+        0.0
+    };
 
     let inner_w = area.width.saturating_sub(4) as usize;
     let bar_w = inner_w.saturating_sub(18).max(5);
@@ -343,28 +415,57 @@ fn render_net(f: &mut Frame, area: Rect, state: &AppState) {
     let up_bar = bar_spans(up_pct, bar_w, theme);
     let down_bar = bar_spans(down_pct, bar_w, theme);
 
-    let up_hist_pct: VecDeque<f64> = state.net_up_hist.iter().map(|v| (v / mx * 100.0).min(100.0)).collect();
-    let down_hist_pct: VecDeque<f64> = state.net_down_hist.iter().map(|v| (v / mx * 100.0).min(100.0)).collect();
+    let up_hist_pct: VecDeque<f64> = state
+        .net_up_hist
+        .iter()
+        .map(|v| (v / mx * 100.0).min(100.0))
+        .collect();
+    let down_hist_pct: VecDeque<f64> = state
+        .net_down_hist
+        .iter()
+        .map(|v| (v / mx * 100.0).min(100.0))
+        .collect();
     let spark_up_str = sparkline(&up_hist_pct, spark_w);
     let spark_dn_str = sparkline_down(&down_hist_pct, spark_w);
 
     let mut lines = Vec::new();
 
-    let mut up_line = vec![Span::styled("Up   ", Style::default().add_modifier(Modifier::BOLD))];
+    let mut up_line = vec![Span::styled(
+        "Up   ",
+        Style::default().add_modifier(Modifier::BOLD),
+    )];
     up_line.extend(up_bar);
-    up_line.push(Span::styled(format!(" {:>10}", fmt_speed(up)), Style::default().fg(theme.net_up)));
+    up_line.push(Span::styled(
+        format!(" {:>10}", fmt_speed(up)),
+        Style::default().fg(theme.net_up),
+    ));
     lines.push(Line::from(up_line));
     lines.push(Line::from(""));
-    lines.push(Line::from(Span::styled(format!("     {}", spark_up_str), Style::default().fg(theme.net_up))));
-    lines.push(Line::from(Span::styled(format!("     {}", spark_dn_str), Style::default().fg(theme.net_down))));
+    lines.push(Line::from(Span::styled(
+        format!("     {}", spark_up_str),
+        Style::default().fg(theme.net_up),
+    )));
+    lines.push(Line::from(Span::styled(
+        format!("     {}", spark_dn_str),
+        Style::default().fg(theme.net_down),
+    )));
     lines.push(Line::from(""));
 
-    let mut down_line = vec![Span::styled("Down ", Style::default().add_modifier(Modifier::BOLD))];
+    let mut down_line = vec![Span::styled(
+        "Down ",
+        Style::default().add_modifier(Modifier::BOLD),
+    )];
     down_line.extend(down_bar);
-    down_line.push(Span::styled(format!(" {:>10}", fmt_speed(down)), Style::default().fg(theme.net_down)));
+    down_line.push(Span::styled(
+        format!(" {:>10}", fmt_speed(down)),
+        Style::default().fg(theme.net_down),
+    ));
     lines.push(Line::from(down_line));
     lines.push(Line::from(""));
-    lines.push(Line::from(Span::styled(format!("Peak: {}", fmt_speed(mx)), Style::default().fg(Color::DarkGray))));
+    lines.push(Line::from(Span::styled(
+        format!("Peak: {}", fmt_speed(mx)),
+        Style::default().fg(Color::DarkGray),
+    )));
 
     let block = styled_block("Network", theme.net);
 
@@ -384,9 +485,15 @@ fn render_mem(f: &mut Frame, area: Rect, state: &AppState) {
     let swap_bar = bar_spans(swap_pct, bar_w, theme);
 
     let mut lines = Vec::new();
-    let mut ram_line = vec![Span::styled("RAM  ", Style::default().add_modifier(Modifier::BOLD))];
+    let mut ram_line = vec![Span::styled(
+        "RAM  ",
+        Style::default().add_modifier(Modifier::BOLD),
+    )];
     ram_line.extend(ram_bar);
-    ram_line.push(Span::styled(format!(" {:5.1}%", ram_pct), Style::default().fg(rc)));
+    ram_line.push(Span::styled(
+        format!(" {:5.1}%", ram_pct),
+        Style::default().fg(rc),
+    ));
     lines.push(Line::from(ram_line));
     lines.push(Line::from(format!(
         "  {} used / {}",
@@ -395,9 +502,15 @@ fn render_mem(f: &mut Frame, area: Rect, state: &AppState) {
     )));
     lines.push(Line::from(""));
 
-    let mut swap_line = vec![Span::styled("Swap ", Style::default().add_modifier(Modifier::BOLD))];
+    let mut swap_line = vec![Span::styled(
+        "Swap ",
+        Style::default().add_modifier(Modifier::BOLD),
+    )];
     swap_line.extend(swap_bar);
-    swap_line.push(Span::styled(format!(" {:5.1}%", swap_pct), Style::default().fg(Color::DarkGray)));
+    swap_line.push(Span::styled(
+        format!(" {:5.1}%", swap_pct),
+        Style::default().fg(Color::DarkGray),
+    ));
     lines.push(Line::from(swap_line));
     lines.push(Line::from(Span::styled(
         format!(
@@ -441,7 +554,12 @@ fn render_temps(f: &mut Frame, area: Rect, state: &AppState) {
 
     if cells.is_empty() {
         let block = styled_block("Temps", theme.bar_mid);
-        f.render_widget(Paragraph::new("No temperature data").style(Style::default().fg(Color::DarkGray)).block(block), area);
+        f.render_widget(
+            Paragraph::new("No temperature data")
+                .style(Style::default().fg(Color::DarkGray))
+                .block(block),
+            area,
+        );
         return;
     }
 
@@ -453,7 +571,9 @@ fn render_temps(f: &mut Frame, area: Rect, state: &AppState) {
     let inner = block.inner(area);
     f.render_widget(block, area);
 
-    let constraints: Vec<Constraint> = (0..ncols).map(|_| Constraint::Ratio(1, ncols as u32)).collect();
+    let constraints: Vec<Constraint> = (0..ncols)
+        .map(|_| Constraint::Ratio(1, ncols as u32))
+        .collect();
     let temp_cols = Layout::default()
         .direction(Direction::Horizontal)
         .constraints(constraints)
@@ -479,7 +599,12 @@ fn temp_cell(label: &str, temp: f64, max: f64, theme: &Theme) -> Vec<Span<'stati
     };
     let filled = (pct / 100.0 * 8.0) as usize;
     vec![
-        Span::styled(format!("{} ", label), Style::default().fg(Color::DarkGray).add_modifier(Modifier::BOLD)),
+        Span::styled(
+            format!("{} ", label),
+            Style::default()
+                .fg(Color::DarkGray)
+                .add_modifier(Modifier::BOLD),
+        ),
         Span::styled("█".repeat(filled), Style::default().fg(c)),
         Span::styled("░".repeat(8 - filled), Style::default().fg(Color::DarkGray)),
         Span::styled(format!(" {:.0}/{:.0}°C", temp, max), Style::default().fg(c)),
@@ -488,7 +613,12 @@ fn temp_cell(label: &str, temp: f64, max: f64, theme: &Theme) -> Vec<Span<'stati
 
 fn temp_cell_na(label: &str) -> Vec<Span<'static>> {
     vec![
-        Span::styled(format!("{} ", label), Style::default().fg(Color::DarkGray).add_modifier(Modifier::BOLD)),
+        Span::styled(
+            format!("{} ", label),
+            Style::default()
+                .fg(Color::DarkGray)
+                .add_modifier(Modifier::BOLD),
+        ),
         Span::styled("N/A", Style::default().fg(Color::DarkGray)),
     ]
 }
@@ -510,7 +640,11 @@ fn render_proc_table(f: &mut Frame, area: Rect, state: &AppState, by_mem: bool) 
     } else {
         &state.procs_by_cpu
     };
-    let colour = if by_mem { theme.proc_mem } else { theme.proc_cpu };
+    let colour = if by_mem {
+        theme.proc_mem
+    } else {
+        theme.proc_cpu
+    };
     let title = if by_mem {
         " Top Processes by Memory "
     } else {
@@ -520,7 +654,11 @@ fn render_proc_table(f: &mut Frame, area: Rect, state: &AppState, by_mem: bool) 
     let bold = Style::default().add_modifier(Modifier::BOLD);
     let header = if by_mem {
         Row::new(vec![
-            Cell::from("PID").style(Style::default().fg(Color::DarkGray).add_modifier(Modifier::BOLD)),
+            Cell::from("PID").style(
+                Style::default()
+                    .fg(Color::DarkGray)
+                    .add_modifier(Modifier::BOLD),
+            ),
             Cell::from("Name").style(bold),
             Cell::from("Used").style(bold),
             Cell::from("Shared").style(bold),
@@ -528,7 +666,11 @@ fn render_proc_table(f: &mut Frame, area: Rect, state: &AppState, by_mem: bool) 
         ])
     } else {
         Row::new(vec![
-            Cell::from("PID").style(Style::default().fg(Color::DarkGray).add_modifier(Modifier::BOLD)),
+            Cell::from("PID").style(
+                Style::default()
+                    .fg(Color::DarkGray)
+                    .add_modifier(Modifier::BOLD),
+            ),
             Cell::from("Name").style(bold),
             Cell::from("Core %").style(bold),
             Cell::from("CPU %").style(bold),
@@ -590,11 +732,20 @@ fn render_proc_table(f: &mut Frame, area: Rect, state: &AppState, by_mem: bool) 
 fn render_status_bar(f: &mut Frame, area: Rect, state: &AppState) {
     let theme = &state.theme;
     let left_spans = vec![
-        Span::styled(" q", Style::default().fg(theme.cpu).add_modifier(Modifier::BOLD)),
+        Span::styled(
+            " q",
+            Style::default().fg(theme.cpu).add_modifier(Modifier::BOLD),
+        ),
         Span::styled("/", Style::default().fg(Color::DarkGray)),
-        Span::styled("ESC", Style::default().fg(theme.cpu).add_modifier(Modifier::BOLD)),
+        Span::styled(
+            "ESC",
+            Style::default().fg(theme.cpu).add_modifier(Modifier::BOLD),
+        ),
         Span::styled(" Quit  ", Style::default().fg(Color::DarkGray)),
-        Span::styled(" t", Style::default().fg(theme.gpu).add_modifier(Modifier::BOLD)),
+        Span::styled(
+            " t",
+            Style::default().fg(theme.gpu).add_modifier(Modifier::BOLD),
+        ),
         Span::styled(" Theme", Style::default().fg(Color::DarkGray)),
     ];
 
@@ -608,9 +759,10 @@ fn render_status_bar(f: &mut Frame, area: Rect, state: &AppState) {
         "░ No OOM kills".to_string()
     };
     let right_len = power_text.len() + oom_text.len();
+    let right_width = right_len.min(area.width as usize) as u16;
     let chunks = Layout::default()
         .direction(Direction::Horizontal)
-        .constraints([Constraint::Min(0), Constraint::Length(right_len as u16)])
+        .constraints([Constraint::Min(0), Constraint::Length(right_width)])
         .split(area);
 
     f.render_widget(Paragraph::new(Line::from(left_spans)), chunks[0]);
@@ -629,7 +781,9 @@ fn render_status_bar(f: &mut Frame, area: Rect, state: &AppState) {
     if state.oom_str.is_some() {
         right_spans.push(Span::styled(
             oom_text,
-            Style::default().fg(theme.bar_high).add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(theme.bar_high)
+                .add_modifier(Modifier::BOLD),
         ));
     } else {
         right_spans.push(Span::styled(oom_text, Style::default().fg(Color::DarkGray)));
@@ -678,13 +832,11 @@ fn render_theme_picker(f: &mut Frame, state: &AppState) {
             if i < total {
                 let name = names[i];
                 let th = crate::theme::get_theme(name);
-                let prefix = if i == cursor {
-                    " > "
-                } else {
-                    "   "
-                };
+                let prefix = if i == cursor { " > " } else { "   " };
                 let style = if i == cursor {
-                    Style::default().fg(th.gpu).add_modifier(Modifier::BOLD | Modifier::REVERSED)
+                    Style::default()
+                        .fg(th.gpu)
+                        .add_modifier(Modifier::BOLD | Modifier::REVERSED)
                 } else if name == state.theme_name {
                     Style::default().fg(th.gpu).add_modifier(Modifier::BOLD)
                 } else {
@@ -726,7 +878,10 @@ fn render_theme_picker(f: &mut Frame, state: &AppState) {
     let dash = "\u{2501}".repeat(6); // ━ × 6
     let preview_spans = vec![
         Span::styled("Preview: ", Style::default().add_modifier(Modifier::BOLD)),
-        Span::styled(format!("{}", preview_name), Style::default().fg(preview.gpu)),
+        Span::styled(
+            format!("{}", preview_name),
+            Style::default().fg(preview.gpu),
+        ),
         Span::raw("  GPU "),
         Span::styled(dash.clone(), Style::default().fg(preview.gpu)),
         Span::raw("  Net "),
@@ -752,7 +907,10 @@ fn render_theme_picker(f: &mut Frame, state: &AppState) {
 
     // Hints
     let hint = Line::from(vec![
-        Span::styled(" UP/DOWN/LEFT/RIGHT", Style::default().add_modifier(Modifier::BOLD)),
+        Span::styled(
+            " UP/DOWN/LEFT/RIGHT",
+            Style::default().add_modifier(Modifier::BOLD),
+        ),
         Span::raw(" Navigate  "),
         Span::styled("ENTER", Style::default().add_modifier(Modifier::BOLD)),
         Span::raw(" Select  "),

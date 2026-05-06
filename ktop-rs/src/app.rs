@@ -4,12 +4,17 @@ use crate::system::{self, NetTracker, OomTracker, ProcInfo, ProcScanner};
 use crate::theme::{self, Theme};
 use crate::ui;
 
+use crossterm::cursor::{Hide, Show};
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyModifiers};
-use crossterm::terminal::{self, EnterAlternateScreen, LeaveAlternateScreen};
+use crossterm::terminal::{
+    self, BeginSynchronizedUpdate, EndSynchronizedUpdate, EnterAlternateScreen,
+    LeaveAlternateScreen,
+};
+use crossterm::QueueableCommand;
 use ratatui::backend::CrosstermBackend;
 use ratatui::Terminal;
 use std::collections::{HashMap, VecDeque};
-use std::io;
+use std::io::{self, Write};
 use std::time::{Duration, Instant};
 
 use sysinfo::{CpuRefreshKind, MemoryRefreshKind, Networks, RefreshKind, System};
@@ -74,6 +79,8 @@ pub fn run(
     refresh: f64,
     sim: bool,
     theme_override: Option<String>,
+    no_alt_screen: bool,
+    no_sync: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
     // Init system
     let mut sys = System::new_with_specifics(
@@ -113,10 +120,7 @@ pub fn run(
     };
 
     let names = theme::theme_names();
-    let theme_cursor = names
-        .iter()
-        .position(|&n| n == theme_name)
-        .unwrap_or(0);
+    let theme_cursor = names.iter().position(|&n| n == theme_name).unwrap_or(0);
 
     // Init other subsystems
     let mut net_tracker = NetTracker::new(&sys);
@@ -127,8 +131,12 @@ pub fn run(
 
     // Terminal setup
     terminal::enable_raw_mode()?;
-    crossterm::execute!(io::stdout(), EnterAlternateScreen)?;
-    let backend = CrosstermBackend::new(io::stdout());
+    let mut stdout = io::stdout();
+    if !no_alt_screen {
+        crossterm::execute!(stdout, EnterAlternateScreen)?;
+    }
+    crossterm::execute!(stdout, Hide)?;
+    let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
     terminal.clear()?;
 
@@ -183,7 +191,7 @@ pub fn run(
                         break;
                     }
                     // Immediate redraw on keypress
-                    terminal.draw(|f| ui::render(f, &state))?;
+                    draw_app(&mut terminal, &state, !no_sync)?;
                     continue;
                 }
             }
@@ -269,11 +277,12 @@ pub fn run(
                     .unwrap_or(0.0);
                 let amd_power: f64 = amd_cards.iter().filter_map(|card| card.power_watts()).sum();
                 let total_power = cpu_power.unwrap_or(0.0) + nvidia_power + amd_power;
-                state.est_power_watts = if cpu_power.is_some() || nvidia_power > 0.0 || amd_power > 0.0 {
-                    Some(total_power)
-                } else {
-                    None
-                };
+                state.est_power_watts =
+                    if cpu_power.is_some() || nvidia_power > 0.0 || amd_power > 0.0 {
+                        Some(total_power)
+                    } else {
+                        None
+                    };
 
                 // CPU temps via sysinfo
                 sample_temps(&sys, &mut state);
@@ -302,17 +311,58 @@ pub fn run(
                 oom_tracker.check();
                 state.oom_str = oom_tracker.last_oom.clone();
 
-                terminal.draw(|f| ui::render(f, &state))?;
+                draw_app(&mut terminal, &state, !no_sync)?;
             }
         }
         Ok(())
     })();
 
     // Cleanup
-    terminal::disable_raw_mode()?;
-    crossterm::execute!(io::stdout(), LeaveAlternateScreen)?;
+    let cleanup_result = restore_terminal(&mut terminal, !no_alt_screen);
+    match (result, cleanup_result) {
+        (Ok(()), Ok(())) => Ok(()),
+        (Ok(()), Err(e)) => Err(Box::new(e)),
+        (Err(e), _) => Err(e),
+    }
+}
 
-    result
+fn draw_app(
+    terminal: &mut Terminal<CrosstermBackend<io::Stdout>>,
+    state: &AppState,
+    sync_updates: bool,
+) -> Result<(), Box<dyn std::error::Error>> {
+    if sync_updates {
+        terminal.backend_mut().queue(BeginSynchronizedUpdate)?;
+    }
+
+    let draw_result = terminal.draw(|f| ui::render(f, state)).map(|_| ());
+
+    if sync_updates {
+        let end_result = terminal
+            .backend_mut()
+            .queue(EndSynchronizedUpdate)
+            .and_then(|backend| backend.flush());
+        if draw_result.is_ok() {
+            end_result?;
+        }
+    }
+
+    draw_result?;
+    Ok(())
+}
+
+fn restore_terminal(
+    terminal: &mut Terminal<CrosstermBackend<io::Stdout>>,
+    alt_screen: bool,
+) -> io::Result<()> {
+    terminal::disable_raw_mode()?;
+    crossterm::execute!(terminal.backend_mut(), Show)?;
+    if alt_screen {
+        crossterm::execute!(terminal.backend_mut(), LeaveAlternateScreen)?;
+    } else {
+        writeln!(terminal.backend_mut())?;
+    }
+    Ok(())
 }
 
 fn handle_key(key: KeyEvent, state: &mut AppState) -> bool {
@@ -391,9 +441,8 @@ fn sample_temps(_sys: &System, state: &mut AppState) {
                     if let Ok(val) = std::fs::read_to_string(&temp_path) {
                         if let Ok(millideg) = val.trim().parse::<f64>() {
                             let temp = millideg / 1000.0;
-                            state.cpu_temp = Some(
-                                state.cpu_temp.map(|t: f64| t.max(temp)).unwrap_or(temp),
-                            );
+                            state.cpu_temp =
+                                Some(state.cpu_temp.map(|t: f64| t.max(temp)).unwrap_or(temp));
                         }
                     }
                     // Check critical then high temp
@@ -426,9 +475,8 @@ fn sample_temps(_sys: &System, state: &mut AppState) {
                     if let Ok(val) = std::fs::read_to_string(&temp_path) {
                         if let Ok(millideg) = val.trim().parse::<f64>() {
                             let temp = millideg / 1000.0;
-                            state.mem_temp = Some(
-                                state.mem_temp.map(|t: f64| t.max(temp)).unwrap_or(temp),
-                            );
+                            state.mem_temp =
+                                Some(state.mem_temp.map(|t: f64| t.max(temp)).unwrap_or(temp));
                         }
                     }
                     let crit_path = path.join(format!("temp{}_crit", i));

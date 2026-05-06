@@ -12,6 +12,19 @@ Then copy the binary to install locally:
 
 ## Changelog
 
+### v1.0.9
+- Add `ktop update` to run the README one-line update installer
+- Add `ktop uninstall` to remove only the resolved `ktop` executable and leave config/system files untouched
+- Tested: `cargo check`, `cargo build --release`, command help smoke tests, temp-copy uninstall smoke test
+
+### v1.0.8
+- Reduce repaint flashing on remote/web terminals by wrapping draws in synchronized terminal updates
+- Hide the cursor while ktop is running and restore it on exit
+- Add `--no-alt-screen` / `KTOP_NO_ALT_SCREEN=1` and `--no-sync` / `KTOP_NO_SYNC=1` compatibility fallbacks
+- Clamp refresh intervals below 0.25s to avoid accidental tight redraw loops
+- Cap footer right-side status width to the visible terminal width on narrow terminals
+- Tested: `cargo check`, `cargo build --release`
+
 ### v1.0.7
 - Keep the footer power slot visible on narrower terminals by right-anchoring power and OOM status
 - Let the left-side help text truncate first instead of clipping PWR off the screen

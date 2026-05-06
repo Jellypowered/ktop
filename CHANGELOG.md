@@ -1,5 +1,50 @@
 # Changelog
 
+## 1.0.9 — 2026-05-06
+
+- Added `ktop update` to run the official README one-line update installer
+- Added `ktop uninstall` to remove only the resolved `ktop` executable while leaving user config and unrelated system files untouched
+- Added command help for update/uninstall
+- Tested: `cargo check`, `cargo build --release`, command help smoke tests, temp-copy uninstall smoke test
+
+## 1.0.8 — 2026-05-06
+
+- Reduced repaint flashing on remote/web terminals by wrapping TUI draws in synchronized terminal updates
+- Hide the cursor while ktop is running and restore it on exit
+- Added `--no-alt-screen` / `KTOP_NO_ALT_SCREEN=1` for terminals whose alternate-screen support flashes or tears
+- Added `--no-sync` / `KTOP_NO_SYNC=1` as a fallback for terminals that mishandle synchronized update escape sequences
+- Clamp refresh intervals below 0.25s to avoid accidental tight redraw loops
+- Cap footer right-side status width to the visible terminal width on narrow terminals
+- Tested: `cargo check`, `cargo build --release`
+
+## 1.0.7 — 2026-04-12
+
+- Keep the footer power slot visible on narrower terminals by right-anchoring power and OOM status
+- Let the left-side help text truncate first instead of clipping PWR off the screen
+- Tested: `cargo build --release`
+
+## 1.0.6 — 2026-04-12
+
+- Always show the footer power slot
+- Display `PWR n/a` when the host exposes no usable power telemetry instead of hiding the field entirely
+- Use saturating footer padding so the power segment is not squeezed out on narrower terminals
+- Tested: `cargo build --release`
+
+## 1.0.5 — 2026-04-12
+
+- Add footer power estimate segment before OOM status when live sensors are available
+- Estimate uses CPU package power from Linux powercap/hwmon plus NVIDIA NVML and AMD hwmon GPU power
+- Hide the power field when the host exposes no usable power sensors instead of showing a fake value
+- Tested: `cargo build --release`
+
+## 1.0.4 — 2026-04-12
+
+- Switch from musl static linking to glibc dynamic linking for NVIDIA GPU compatibility
+- musl binaries cannot `dlopen` glibc-linked shared libraries such as `libnvidia-ml.so`, which caused NVIDIA GPU detection to fail
+- CI now uses `cross` to build GNU-targeted binaries against an older glibc for portability
+- Install script updated to fetch GNU-targeted binaries
+- Tested: local build, version check, `ldd` confirms dynamic linking
+
 ## 1.0.3 — 2026-03-22
 
 - Static linking via musl — binary now runs on any Linux distro regardless of GLIBC version
