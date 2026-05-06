@@ -77,6 +77,9 @@ ktop --compat
 # Report terminal size and resize behavior
 ktop diagnose-terminal
 
+# Isolate which terminal repaint behavior flashes
+ktop diagnose-render --case full-paint
+
 # Show version
 ktop --version
 
@@ -103,6 +106,7 @@ ktop --compat
 ```
 
 Compatibility mode disables alternate screen and synchronized redraws, skips startup clears, and slows the default refresh to 2s.
+It also uses lower-churn rendering by suppressing moving sparklines and refreshing process tables less often.
 
 You can also set `KTOP_COMPAT=1`.
 
@@ -111,6 +115,22 @@ To check whether a terminal is reporting unstable sizes or repeated resize event
 ```bash
 ktop diagnose-terminal --duration 8
 ```
+
+If the size report is stable but ktop still flashes, isolate the repaint trigger:
+
+```bash
+ktop diagnose-render --case plain --duration 4
+ktop diagnose-render --case cursor --duration 4
+ktop diagnose-render --case color --duration 4
+ktop diagnose-render --case rgb --duration 4
+ktop diagnose-render --case unicode --duration 4
+ktop diagnose-render --case full-paint --duration 4
+ktop diagnose-render --case clear --duration 4
+ktop diagnose-render --case alternate --duration 4
+ktop diagnose-render --case sync --duration 4
+```
+
+Report which cases visibly flash. Each case exits by itself.
 
 If a command unexpectedly starts the monitor, check `ktop --version`; terminal diagnostics and compatibility mode require ktop 1.0.10 or newer.
 

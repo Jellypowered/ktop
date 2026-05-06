@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.0.12 — 2026-05-06
+
+- Reduced lower-screen repaint churn by smoothing process CPU percentages before sorting/display
+- Added deterministic process-table tie breakers so similar samples do not reshuffle rows unnecessarily
+- Made `--compat` use low-churn rendering: moving sparklines are suppressed and process tables refresh every 10s
+- Intended for terminals that visibly flash only the cells/regions rewritten by live metric updates
+
+## 1.0.11 — 2026-05-06
+
+- Added `ktop diagnose-render` to isolate visual flashing by terminal escape category
+- Render diagnostics cover plain output, cursor repaint, ANSI color, 24-bit RGB color, Unicode blocks, full-frame painting, repeated clear, alternate screen, and synchronized update
+- Intended follow-up for terminals where size diagnostics are stable but the TUI still visibly flashes
+
 ## 1.0.10 — 2026-05-06
 
 - Avoid repeated terminal clears from unstable resize reporting by using a fixed viewport and debounced resize handling

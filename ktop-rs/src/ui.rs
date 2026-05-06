@@ -254,16 +254,24 @@ fn render_gpu(f: &mut Frame, area: Rect, state: &AppState) {
         let util_bar = bar_spans(g.util, bar_w, theme);
         let mem_bar = bar_spans(g.mem_pct, bar_w, theme);
 
-        let spark_u = state
-            .gpu_util_hist
-            .get(&g.id)
-            .map(|h| sparkline(h, spark_w))
-            .unwrap_or_default();
-        let spark_m = state
-            .gpu_mem_hist
-            .get(&g.id)
-            .map(|h| sparkline(h, spark_w))
-            .unwrap_or_default();
+        let spark_u = if state.steady_render {
+            String::new()
+        } else {
+            state
+                .gpu_util_hist
+                .get(&g.id)
+                .map(|h| sparkline(h, spark_w))
+                .unwrap_or_default()
+        };
+        let spark_m = if state.steady_render {
+            String::new()
+        } else {
+            state
+                .gpu_mem_hist
+                .get(&g.id)
+                .map(|h| sparkline(h, spark_w))
+                .unwrap_or_default()
+        };
 
         let mut lines = Vec::new();
 
@@ -353,7 +361,11 @@ fn render_cpu(f: &mut Frame, area: Rect, state: &AppState) {
     let spark_w = inner_w.saturating_sub(10).max(10);
 
     let cpu_bar = bar_spans(pct, bar_w, theme);
-    let (spark_top, spark_bot) = sparkline_double(&state.cpu_hist, spark_w);
+    let (spark_top, spark_bot) = if state.steady_render {
+        (String::new(), String::new())
+    } else {
+        sparkline_double(&state.cpu_hist, spark_w)
+    };
 
     let mut lines = Vec::new();
     let mut overall = vec![Span::styled(
@@ -415,18 +427,24 @@ fn render_net(f: &mut Frame, area: Rect, state: &AppState) {
     let up_bar = bar_spans(up_pct, bar_w, theme);
     let down_bar = bar_spans(down_pct, bar_w, theme);
 
-    let up_hist_pct: VecDeque<f64> = state
-        .net_up_hist
-        .iter()
-        .map(|v| (v / mx * 100.0).min(100.0))
-        .collect();
-    let down_hist_pct: VecDeque<f64> = state
-        .net_down_hist
-        .iter()
-        .map(|v| (v / mx * 100.0).min(100.0))
-        .collect();
-    let spark_up_str = sparkline(&up_hist_pct, spark_w);
-    let spark_dn_str = sparkline_down(&down_hist_pct, spark_w);
+    let (spark_up_str, spark_dn_str) = if state.steady_render {
+        (String::new(), String::new())
+    } else {
+        let up_hist_pct: VecDeque<f64> = state
+            .net_up_hist
+            .iter()
+            .map(|v| (v / mx * 100.0).min(100.0))
+            .collect();
+        let down_hist_pct: VecDeque<f64> = state
+            .net_down_hist
+            .iter()
+            .map(|v| (v / mx * 100.0).min(100.0))
+            .collect();
+        (
+            sparkline(&up_hist_pct, spark_w),
+            sparkline_down(&down_hist_pct, spark_w),
+        )
+    };
 
     let mut lines = Vec::new();
 

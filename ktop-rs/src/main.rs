@@ -8,19 +8,26 @@ mod ui;
 use std::collections::BTreeMap;
 use std::env;
 use std::fs;
-use std::io::{self, IsTerminal};
+use std::io::{self, IsTerminal, Write};
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::{Duration, Instant};
 
+use crossterm::cursor::{Hide, MoveTo, Show};
 use crossterm::event::{self, Event};
-use crossterm::terminal;
+use crossterm::style::{Color, Print, ResetColor, SetForegroundColor};
+use crossterm::terminal::{
+    self, BeginSynchronizedUpdate, Clear, ClearType, EndSynchronizedUpdate, EnterAlternateScreen,
+    LeaveAlternateScreen,
+};
+use crossterm::{execute, queue};
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 const MIN_REFRESH_SECS: f64 = 0.25;
 const COMPAT_REFRESH_SECS: f64 = 2.0;
 const DIAGNOSTIC_DURATION_SECS: f64 = 5.0;
+const RENDER_DIAGNOSTIC_DURATION_SECS: f64 = 4.0;
 const INSTALL_SCRIPT_URL: &str =
     "https://raw.githubusercontent.com/brontoguana/ktop/master/install.sh";
 
@@ -56,10 +63,7 @@ fn main() {
                         print_uninstall_help();
                         return;
                     }
-                    exit_usage_error(format!(
-                        "unexpected argument '{}' for ktop uninstall",
-                        arg
-                    ));
+                    exit_usage_error(format!("unexpected argument '{}' for ktop uninstall", arg));
                 }
                 if let Err(e) = run_uninstall(&args[0]) {
                     eprintln!("Error: {}", e);
@@ -69,6 +73,13 @@ fn main() {
             }
             "diagnose-terminal" => {
                 if let Err(e) = run_terminal_diagnostics(&args[2..]) {
+                    eprintln!("Error: {}", e);
+                    std::process::exit(1);
+                }
+                return;
+            }
+            "diagnose-render" => {
+                if let Err(e) = run_render_diagnostics(&args[2..]) {
                     eprintln!("Error: {}", e);
                     std::process::exit(1);
                 }
@@ -135,14 +146,7 @@ fn main() {
         }
     }
 
-    if let Err(e) = app::run(
-        refresh,
-        sim,
-        theme_override,
-        no_alt_screen,
-        no_sync,
-        compat,
-    ) {
+    if let Err(e) = app::run(refresh, sim, theme_override, no_alt_screen, no_sync, compat) {
         eprintln!("Error: {}", e);
         std::process::exit(1);
     }
@@ -201,6 +205,7 @@ fn print_main_help() {
     println!();
     println!("Commands:");
     println!("  diagnose-terminal      Report terminal size and resize behavior");
+    println!("  diagnose-render        Run visual terminal repaint isolation tests");
     println!("  update                 Run the official one-line update installer");
     println!("  uninstall              Remove this ktop executable");
 }
@@ -226,6 +231,26 @@ fn print_diagnostics_help() {
     println!("Usage: ktop diagnose-terminal [--duration SECS]");
 }
 
+fn print_render_diagnostics_help() {
+    println!("ktop diagnose-render");
+    println!();
+    println!("Runs a short visual repaint test without starting the monitor.");
+    println!("Use one case at a time and report which case visibly flashes.");
+    println!();
+    println!("Usage: ktop diagnose-render [--case CASE] [--duration SECS]");
+    println!();
+    println!("Cases:");
+    println!("  plain       Print normal lines only");
+    println!("  cursor      Repaint a small ASCII panel with cursor movement");
+    println!("  color       Cursor movement plus ANSI color");
+    println!("  rgb         Cursor movement plus 24-bit RGB color");
+    println!("  unicode     Cursor movement plus Unicode block glyphs");
+    println!("  full-paint  Large colored Unicode repaint, no clear/alt/sync");
+    println!("  clear       Repeated full-screen clear plus small repaint");
+    println!("  alternate   Alternate screen plus small repaint");
+    println!("  sync        Synchronized update plus large repaint");
+}
+
 fn run_terminal_diagnostics(args: &[String]) -> Result<(), String> {
     let mut duration = DIAGNOSTIC_DURATION_SECS;
     let mut i = 0;
@@ -248,8 +273,8 @@ fn run_terminal_diagnostics(args: &[String]) -> Result<(), String> {
         i += 1;
     }
 
-    let initial_size = terminal::size()
-        .map_err(|e| format!("could not read terminal size: {}", e))?;
+    let initial_size =
+        terminal::size().map_err(|e| format!("could not read terminal size: {}", e))?;
     let mut stats = TerminalDiagnostics {
         duration,
         stdin_tty: io::stdin().is_terminal(),
@@ -306,6 +331,427 @@ fn run_terminal_diagnostics(args: &[String]) -> Result<(), String> {
     Ok(())
 }
 
+fn run_render_diagnostics(args: &[String]) -> Result<(), String> {
+    let mut duration = RENDER_DIAGNOSTIC_DURATION_SECS;
+    let mut case = RenderDiagnosticCase::FullPaint;
+    let mut i = 0;
+    while i < args.len() {
+        match args[i].as_str() {
+            "-h" | "--help" => {
+                print_render_diagnostics_help();
+                return Ok(());
+            }
+            "--duration" => {
+                i += 1;
+                if let Some(value) = args.get(i) {
+                    duration = parse_duration_secs(value);
+                } else {
+                    return Err("missing value for --duration".to_string());
+                }
+            }
+            "--case" => {
+                i += 1;
+                if let Some(value) = args.get(i) {
+                    case = RenderDiagnosticCase::parse(value)?;
+                } else {
+                    return Err("missing value for --case".to_string());
+                }
+            }
+            other => return Err(format!("unknown diagnose-render option '{}'", other)),
+        }
+        i += 1;
+    }
+
+    let size = terminal::size().map_err(|e| format!("could not read terminal size: {}", e))?;
+    println!("ktop render diagnostics");
+    println!("version: {}", VERSION);
+    println!("case: {}", case.name());
+    println!("duration_secs: {:.1}", duration);
+    println!("stdout_tty: {}", io::stdout().is_terminal());
+    println!(
+        "TERM: {}",
+        env::var("TERM").unwrap_or_else(|_| "(unset)".to_string())
+    );
+    println!("size: {}x{}", size.0, size.1);
+    println!("watch this case for flashing; the test starts in 1 second");
+    io::stdout()
+        .flush()
+        .map_err(|e| format!("could not flush stdout: {}", e))?;
+    std::thread::sleep(Duration::from_secs(1));
+
+    run_render_diagnostic_case(case, duration, size)?;
+    println!(
+        "render diagnostic complete: case={} frames={}",
+        case.name(),
+        (duration / 0.25).ceil() as u64
+    );
+    Ok(())
+}
+
+#[derive(Clone, Copy)]
+enum RenderDiagnosticCase {
+    Plain,
+    Cursor,
+    Color,
+    Rgb,
+    Unicode,
+    FullPaint,
+    Clear,
+    Alternate,
+    Sync,
+}
+
+impl RenderDiagnosticCase {
+    fn parse(value: &str) -> Result<Self, String> {
+        match value {
+            "plain" => Ok(Self::Plain),
+            "cursor" => Ok(Self::Cursor),
+            "color" => Ok(Self::Color),
+            "rgb" => Ok(Self::Rgb),
+            "unicode" => Ok(Self::Unicode),
+            "full-paint" => Ok(Self::FullPaint),
+            "clear" => Ok(Self::Clear),
+            "alternate" => Ok(Self::Alternate),
+            "sync" => Ok(Self::Sync),
+            _ => Err(format!("unknown render diagnostic case '{}'", value)),
+        }
+    }
+
+    fn name(self) -> &'static str {
+        match self {
+            Self::Plain => "plain",
+            Self::Cursor => "cursor",
+            Self::Color => "color",
+            Self::Rgb => "rgb",
+            Self::Unicode => "unicode",
+            Self::FullPaint => "full-paint",
+            Self::Clear => "clear",
+            Self::Alternate => "alternate",
+            Self::Sync => "sync",
+        }
+    }
+}
+
+fn run_render_diagnostic_case(
+    case: RenderDiagnosticCase,
+    duration: f64,
+    size: (u16, u16),
+) -> Result<(), String> {
+    if matches!(case, RenderDiagnosticCase::Plain) {
+        let deadline = Instant::now() + Duration::from_secs_f64(duration);
+        let mut frame = 0u64;
+        while Instant::now() < deadline {
+            frame += 1;
+            println!("plain diagnostic frame {:03}", frame);
+            std::thread::sleep(Duration::from_millis(250));
+        }
+        return Ok(());
+    }
+
+    terminal::enable_raw_mode()
+        .map_err(|e| format!("could not enable raw mode for render diagnostic: {}", e))?;
+    let result = run_render_diagnostic_case_raw(case, duration, size);
+    let cleanup_result = terminal::disable_raw_mode()
+        .map_err(|e| format!("could not disable raw mode after render diagnostic: {}", e));
+
+    match (result, cleanup_result) {
+        (Ok(()), Ok(())) => Ok(()),
+        (Err(e), _) => Err(e),
+        (Ok(()), Err(e)) => Err(e),
+    }
+}
+
+fn run_render_diagnostic_case_raw(
+    case: RenderDiagnosticCase,
+    duration: f64,
+    size: (u16, u16),
+) -> Result<(), String> {
+    let mut stdout = io::stdout();
+    let use_alt = matches!(case, RenderDiagnosticCase::Alternate);
+
+    if use_alt {
+        execute!(stdout, EnterAlternateScreen)
+            .map_err(|e| format!("could not enter alternate screen: {}", e))?;
+    }
+    execute!(stdout, Hide).map_err(|e| format!("could not hide cursor: {}", e))?;
+
+    let result = (|| -> Result<(), String> {
+        let deadline = Instant::now() + Duration::from_secs_f64(duration);
+        let mut frame = 0u64;
+        while Instant::now() < deadline {
+            frame += 1;
+            match case {
+                RenderDiagnosticCase::Cursor | RenderDiagnosticCase::Alternate => {
+                    draw_small_ascii_panel(&mut stdout, case.name(), frame, size)?;
+                }
+                RenderDiagnosticCase::Color => {
+                    draw_color_panel(&mut stdout, case.name(), frame, size)?;
+                }
+                RenderDiagnosticCase::Rgb => {
+                    draw_rgb_panel(&mut stdout, case.name(), frame, size)?;
+                }
+                RenderDiagnosticCase::Unicode => {
+                    draw_unicode_panel(&mut stdout, case.name(), frame, size)?;
+                }
+                RenderDiagnosticCase::FullPaint => {
+                    draw_full_paint(&mut stdout, case.name(), frame, size)?;
+                }
+                RenderDiagnosticCase::Clear => {
+                    queue!(stdout, Clear(ClearType::All))
+                        .map_err(|e| format!("could not queue clear: {}", e))?;
+                    draw_small_ascii_panel(&mut stdout, case.name(), frame, size)?;
+                }
+                RenderDiagnosticCase::Sync => {
+                    queue!(stdout, BeginSynchronizedUpdate)
+                        .map_err(|e| format!("could not start synchronized update: {}", e))?;
+                    let draw_result = draw_full_paint(&mut stdout, case.name(), frame, size);
+                    let end_result = queue!(stdout, EndSynchronizedUpdate)
+                        .map_err(|e| format!("could not end synchronized update: {}", e));
+                    draw_result?;
+                    end_result?;
+                }
+                RenderDiagnosticCase::Plain => {}
+            }
+            stdout
+                .flush()
+                .map_err(|e| format!("could not flush render frame: {}", e))?;
+            std::thread::sleep(Duration::from_millis(250));
+        }
+        Ok(())
+    })();
+
+    let cleanup = (|| -> Result<(), String> {
+        queue!(stdout, ResetColor, Show)
+            .map_err(|e| format!("could not queue terminal reset: {}", e))?;
+        if use_alt {
+            queue!(stdout, LeaveAlternateScreen)
+                .map_err(|e| format!("could not leave alternate screen: {}", e))?;
+        } else {
+            queue!(stdout, MoveTo(0, size.1.saturating_sub(1)))
+                .map_err(|e| format!("could not move cursor for cleanup: {}", e))?;
+            queue!(stdout, Print("\r\n"))
+                .map_err(|e| format!("could not queue cleanup newline: {}", e))?;
+        }
+        stdout
+            .flush()
+            .map_err(|e| format!("could not flush terminal cleanup: {}", e))
+    })();
+
+    match (result, cleanup) {
+        (Ok(()), Ok(())) => Ok(()),
+        (Err(e), _) => Err(e),
+        (Ok(()), Err(e)) => Err(e),
+    }
+}
+
+fn draw_small_ascii_panel(
+    stdout: &mut io::Stdout,
+    label: &str,
+    frame: u64,
+    size: (u16, u16),
+) -> Result<(), String> {
+    let width = size.0.max(1).min(96) as usize;
+    queue!(stdout, MoveTo(0, 0)).map_err(|e| format!("could not move cursor: {}", e))?;
+    for row in 0..8u16 {
+        queue!(stdout, MoveTo(0, row)).map_err(|e| format!("could not move cursor: {}", e))?;
+        let text = match row {
+            0 => format!("ktop render diagnostic: {}", label),
+            1 => format!("frame: {:03}", frame),
+            2 => "ASCII repaint with cursor movement only".to_string(),
+            4 => format!(
+                "load [{}{}]",
+                "#".repeat((frame as usize % 20) + 1),
+                " ".repeat(19 - (frame as usize % 20))
+            ),
+            6 => "If this flashes, cursor-position repaint is the trigger.".to_string(),
+            _ => String::new(),
+        };
+        queue!(stdout, Print(pad_to_width(&text, width)))
+            .map_err(|e| format!("could not write panel row: {}", e))?;
+    }
+    Ok(())
+}
+
+fn draw_color_panel(
+    stdout: &mut io::Stdout,
+    label: &str,
+    frame: u64,
+    size: (u16, u16),
+) -> Result<(), String> {
+    draw_small_ascii_panel(stdout, label, frame, size)?;
+    let colors = [
+        Color::Blue,
+        Color::Cyan,
+        Color::Green,
+        Color::Yellow,
+        Color::Red,
+        Color::Magenta,
+    ];
+    queue!(stdout, MoveTo(0, 9)).map_err(|e| format!("could not move cursor: {}", e))?;
+    for (idx, color) in colors.iter().enumerate() {
+        queue!(
+            stdout,
+            SetForegroundColor(*color),
+            Print(format!(" color{} ", idx + 1))
+        )
+        .map_err(|e| format!("could not write color sample: {}", e))?;
+    }
+    queue!(stdout, ResetColor).map_err(|e| format!("could not reset color: {}", e))?;
+    Ok(())
+}
+
+fn draw_rgb_panel(
+    stdout: &mut io::Stdout,
+    label: &str,
+    frame: u64,
+    size: (u16, u16),
+) -> Result<(), String> {
+    draw_small_ascii_panel(stdout, label, frame, size)?;
+    let colors = [
+        Color::Rgb {
+            r: 70,
+            g: 130,
+            b: 180,
+        },
+        Color::Rgb {
+            r: 40,
+            g: 190,
+            b: 140,
+        },
+        Color::Rgb {
+            r: 230,
+            g: 180,
+            b: 60,
+        },
+        Color::Rgb {
+            r: 220,
+            g: 90,
+            b: 80,
+        },
+    ];
+    queue!(stdout, MoveTo(0, 9)).map_err(|e| format!("could not move cursor: {}", e))?;
+    for (idx, color) in colors.iter().enumerate() {
+        queue!(
+            stdout,
+            SetForegroundColor(*color),
+            Print(format!(" rgb{} ", idx + 1))
+        )
+        .map_err(|e| format!("could not write RGB sample: {}", e))?;
+    }
+    queue!(stdout, ResetColor).map_err(|e| format!("could not reset color: {}", e))?;
+    Ok(())
+}
+
+fn draw_unicode_panel(
+    stdout: &mut io::Stdout,
+    label: &str,
+    frame: u64,
+    size: (u16, u16),
+) -> Result<(), String> {
+    draw_small_ascii_panel(stdout, label, frame, size)?;
+    let blocks = ["▁▂▃▄▅▆▇█", "░░▒▒▓▓██", "╭────╮ │ │ ╰────╯"];
+    for (idx, sample) in blocks.iter().enumerate() {
+        queue!(stdout, MoveTo(0, 9 + idx as u16))
+            .map_err(|e| format!("could not move cursor: {}", e))?;
+        queue!(
+            stdout,
+            Print(format!("unicode sample {}: {}", idx + 1, sample))
+        )
+        .map_err(|e| format!("could not write unicode sample: {}", e))?;
+    }
+    Ok(())
+}
+
+fn draw_full_paint(
+    stdout: &mut io::Stdout,
+    label: &str,
+    frame: u64,
+    size: (u16, u16),
+) -> Result<(), String> {
+    let width = size.0.max(1) as usize;
+    let height = size.1.max(8).min(40);
+    let palette = [
+        Color::Rgb {
+            r: 70,
+            g: 130,
+            b: 180,
+        },
+        Color::Rgb {
+            r: 40,
+            g: 190,
+            b: 140,
+        },
+        Color::Rgb {
+            r: 230,
+            g: 180,
+            b: 60,
+        },
+        Color::Rgb {
+            r: 220,
+            g: 90,
+            b: 80,
+        },
+    ];
+
+    for row in 0..height {
+        queue!(stdout, MoveTo(0, row)).map_err(|e| format!("could not move cursor: {}", e))?;
+        queue!(
+            stdout,
+            SetForegroundColor(palette[row as usize % palette.len()])
+        )
+        .map_err(|e| format!("could not set foreground color: {}", e))?;
+
+        let line = if row == 0 {
+            format!("╭─ ktop render diagnostic: {} frame {:03}", label, frame)
+        } else if row == height - 1 {
+            "╰".to_string() + &"─".repeat(width.saturating_sub(1))
+        } else if row % 4 == 0 {
+            format!(
+                "│ GPU{} {} {}",
+                row % 8,
+                "█".repeat((frame as usize + row as usize) % width.max(1)),
+                "░".repeat(width / 4)
+            )
+        } else if row % 4 == 1 {
+            format!(
+                "│ CPU  {:>3}% {}",
+                (frame * 7 + row as u64) % 100,
+                "▁▂▃▄▅▆▇█".repeat((width / 8).max(1))
+            )
+        } else if row % 4 == 2 {
+            format!(
+                "│ MEM  {:>3}% {}",
+                (frame * 5 + row as u64) % 100,
+                "░▒▓█".repeat((width / 4).max(1))
+            )
+        } else {
+            format!(
+                "│ PROC {:>5} command-{} {}",
+                frame * row as u64,
+                row,
+                "─".repeat(width / 2)
+            )
+        };
+        queue!(stdout, Print(truncate_pad_to_width(&line, width)))
+            .map_err(|e| format!("could not write full paint row: {}", e))?;
+    }
+    queue!(stdout, ResetColor).map_err(|e| format!("could not reset color: {}", e))?;
+    Ok(())
+}
+
+fn pad_to_width(text: &str, width: usize) -> String {
+    let len = text.chars().count();
+    if len >= width {
+        text.chars().take(width).collect()
+    } else {
+        format!("{}{}", text, " ".repeat(width - len))
+    }
+}
+
+fn truncate_pad_to_width(text: &str, width: usize) -> String {
+    pad_to_width(text, width)
+}
+
 #[derive(Default)]
 struct TerminalDiagnostics {
     duration: f64,
@@ -355,12 +801,18 @@ impl TerminalDiagnostics {
         println!("stdout_tty: {}", self.stdout_tty);
         println!("stderr_tty: {}", self.stderr_tty);
         println!("raw_mode_probe: {}", raw_mode);
-        println!("TERM: {}", env::var("TERM").unwrap_or_else(|_| "(unset)".to_string()));
+        println!(
+            "TERM: {}",
+            env::var("TERM").unwrap_or_else(|_| "(unset)".to_string())
+        );
         println!(
             "COLORTERM: {}",
             env::var("COLORTERM").unwrap_or_else(|_| "(unset)".to_string())
         );
-        println!("initial_size: {}x{}", self.initial_size.0, self.initial_size.1);
+        println!(
+            "initial_size: {}x{}",
+            self.initial_size.0, self.initial_size.1
+        );
         println!("samples: {}", self.samples);
         println!("sampled_size_changes: {}", self.size_changes);
         println!("sampled_unique_sizes: {}", self.sampled_sizes.len());

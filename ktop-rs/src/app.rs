@@ -22,6 +22,8 @@ use sysinfo::{CpuRefreshKind, MemoryRefreshKind, Networks, RefreshKind, System};
 
 const HISTORY_LEN: usize = 300;
 const RESIZE_DEBOUNCE: Duration = Duration::from_millis(250);
+const PROCESS_SCAN_SECS: f64 = 3.0;
+const COMPAT_PROCESS_SCAN_SECS: f64 = 10.0;
 
 pub struct AppState {
     // Theme
@@ -75,6 +77,7 @@ pub struct AppState {
     // OOM
     pub oom_str: Option<String>,
     pub est_power_watts: Option<f64>,
+    pub steady_render: bool,
 }
 
 pub fn run(
@@ -188,6 +191,7 @@ pub fn run(
         num_cpus: proc_scanner.num_cpus(),
         oom_str: None,
         est_power_watts: None,
+        steady_render: compat,
     };
 
     let refresh_dur = Duration::from_secs_f64(refresh);
@@ -339,7 +343,12 @@ pub fn run(
                 }
 
                 // Processes
-                proc_scanner.scan(state.ram_total);
+                let proc_scan_secs = if state.steady_render {
+                    COMPAT_PROCESS_SCAN_SECS
+                } else {
+                    PROCESS_SCAN_SECS
+                };
+                proc_scanner.scan(state.ram_total, proc_scan_secs);
                 state.procs_by_mem = proc_scanner.by_mem.clone();
                 state.procs_by_cpu = proc_scanner.by_cpu.clone();
 

@@ -21,6 +21,7 @@ pub struct ProcInfo {
 
 pub struct ProcScanner {
     cpu_prev: HashMap<u32, u64>,
+    cpu_smoothed: HashMap<u32, f64>,
     last_scan: Instant,
     page_size: u64,
     clock_ticks: u64,
@@ -37,6 +38,7 @@ impl ProcScanner {
 
         let mut scanner = Self {
             cpu_prev: HashMap::new(),
+            cpu_smoothed: HashMap::new(),
             last_scan: Instant::now(),
             page_size,
             clock_ticks,
@@ -64,10 +66,14 @@ impl ProcScanner {
         }
     }
 
-    pub fn scan(&mut self, total_mem: u64) {
+    pub fn scan(&mut self, total_mem: u64, min_wait_secs: f64) {
         let now = Instant::now();
         let elapsed = now.duration_since(self.last_scan).as_secs_f64();
-        let min_wait = if self.by_mem.is_empty() { 1.0 } else { 3.0 };
+        let min_wait = if self.by_mem.is_empty() {
+            1.0
+        } else {
+            min_wait_secs.max(1.0)
+        };
         if elapsed < min_wait {
             return;
         }
@@ -127,11 +133,14 @@ impl ProcScanner {
                 let cpu_delta = cpu_total.saturating_sub(prev);
                 self.cpu_prev.insert(pid, cpu_total);
 
-                let cpu_pct = if dt > 0.0 {
+                let raw_cpu_pct = if dt > 0.0 {
                     (cpu_delta as f64 / ct) / dt * 100.0
                 } else {
                     0.0
                 };
+                let previous_smoothed = self.cpu_smoothed.get(&pid).copied().unwrap_or(raw_cpu_pct);
+                let cpu_pct = previous_smoothed * 0.65 + raw_cpu_pct * 0.35;
+                self.cpu_smoothed.insert(pid, cpu_pct);
 
                 procs.push(ProcInfo {
                     pid,
@@ -146,19 +155,31 @@ impl ProcScanner {
 
         // Sort and take top 10 by each metric
         let mut by_mem = procs.clone();
-        by_mem.sort_by(|a, b| b.memory_percent.partial_cmp(&a.memory_percent).unwrap_or(std::cmp::Ordering::Equal));
+        by_mem.sort_by(|a, b| {
+            b.memory_percent
+                .partial_cmp(&a.memory_percent)
+                .unwrap_or(std::cmp::Ordering::Equal)
+                .then_with(|| a.pid.cmp(&b.pid))
+        });
         by_mem.truncate(10);
 
         let mut by_cpu = procs.clone();
-        by_cpu.sort_by(|a, b| b.cpu_percent.partial_cmp(&a.cpu_percent).unwrap_or(std::cmp::Ordering::Equal));
+        by_cpu.sort_by(|a, b| {
+            b.cpu_percent
+                .partial_cmp(&a.cpu_percent)
+                .unwrap_or(std::cmp::Ordering::Equal)
+                .then_with(|| {
+                    b.memory_percent
+                        .partial_cmp(&a.memory_percent)
+                        .unwrap_or(std::cmp::Ordering::Equal)
+                })
+                .then_with(|| a.pid.cmp(&b.pid))
+        });
         by_cpu.truncate(10);
 
         // Read shared memory for displayed procs
-        let displayed: std::collections::HashSet<u32> = by_mem
-            .iter()
-            .chain(by_cpu.iter())
-            .map(|p| p.pid)
-            .collect();
+        let displayed: std::collections::HashSet<u32> =
+            by_mem.iter().chain(by_cpu.iter()).map(|p| p.pid).collect();
 
         for p in by_mem.iter_mut().chain(by_cpu.iter_mut()) {
             if displayed.contains(&p.pid) {
@@ -169,6 +190,7 @@ impl ProcScanner {
         // Clean stale PIDs
         let current: std::collections::HashSet<u32> = procs.iter().map(|p| p.pid).collect();
         self.cpu_prev.retain(|k, _| current.contains(k));
+        self.cpu_smoothed.retain(|k, _| current.contains(k));
 
         self.by_mem = by_mem;
         self.by_cpu = by_cpu;

@@ -12,6 +12,15 @@ Then copy the binary to install locally:
 
 ## Changelog
 
+### v1.0.12
+- Smooth process CPU percentages before sorting/display to reduce lower-screen row churn
+- Add deterministic process-table tie breakers
+- Make `--compat` a lower-churn mode by suppressing moving sparklines and refreshing process tables every 10s
+
+### v1.0.11
+- Add `ktop diagnose-render` for visual repaint isolation on terminals with stable size diagnostics but flashing TUI repaint
+- Cases: plain, cursor, color, rgb, unicode, full-paint, clear, alternate, sync
+
 ### v1.0.10
 - Avoid repeated terminal clears from unstable resize reporting by using a fixed viewport and debounced resize handling
 - Add `ktop diagnose-terminal` for terminal size and resize-event diagnostics
