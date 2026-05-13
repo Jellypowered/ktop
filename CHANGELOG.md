@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- Switched installer repository target from brontoguana/ktop to jellypowered/ktop in install.sh
+- Updated ktop self-update installer URL to jellypowered/ktop in ktop-rs/src/main.rs
+- Fixed GPU panel bar rendering calls to pass steady/truecolor arguments to bar_spans after merge
+- Tested: cargo build --release (attempted)
+
 ## 1.0.17 — 2026-05-06
 
 - Restored color in Basic mode without using extended foreground color escapes
@@ -71,7 +78,16 @@
 - Cap footer right-side status width to the visible terminal width on narrow terminals
 - Tested: `cargo check`, `cargo build --release`
 
-## 1.0.7 — 2026-04-12
+## 1.0.8 — 2026-04-12 - Pulled Power Meter
+
+- Add per-GPU power monitoring with power bar and current/limit display
+- NVIDIA GPUs: query power via NVML `nvmlDeviceGetPowerUsage()` and limit via `nvmlDeviceGetPowerManagementLimit()`
+- AMD GPUs: read power from hwmon `power1_input` and limit from `power1_cap` sysfs
+- Power bar scales to each GPU's specific power limit instead of fixed 600W
+- Power display shows `current/limit W` with color-coded bar (green→yellow→red)
+- Tested: `cargo build --release`, version check, ldd confirms dynamic linking
+
+## 1.0.7 — 2026-03-22
 
 - Keep the footer power slot visible on narrower terminals by right-anchoring power and OOM status
 - Let the left-side help text truncate first instead of clipping PWR off the screen
@@ -100,18 +116,6 @@
 - Tested: local build, version check, `ldd` confirms dynamic linking
 
 ## 1.0.3 — 2026-03-22
-=======
-## 1.0.8 — 2026-04-12
-
-- Add per-GPU power monitoring with power bar and current/limit display
-- NVIDIA GPUs: query power via NVML `nvmlDeviceGetPowerUsage()` and limit via `nvmlDeviceGetPowerManagementLimit()`
-- AMD GPUs: read power from hwmon `power1_input` and limit from `power1_cap` sysfs
-- Power bar scales to each GPU's specific power limit instead of fixed 600W
-- Power display shows `current/limit W` with color-coded bar (green→yellow→red)
-- Tested: `cargo build --release`, version check, ldd confirms dynamic linking
-
-## 1.0.7 — 2026-03-22
->>>>>>> 334f4d2f4485b0d89cbdc222fa0225dc32b5f98c
 
 - Static linking via musl — binary now runs on any Linux distro regardless of GLIBC version
 - No more "GLIBC_2.xx not found" errors on older systems
