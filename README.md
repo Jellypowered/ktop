@@ -11,7 +11,7 @@ A terminal-based system resource monitor built for tracking resource usage when 
 ### Latest
 
 - Rewritten from Python to Rust — single static binary, near-zero CPU overhead, instant startup
-- One-line install and upgrade: `curl -sSfL https://raw.githubusercontent.com/brontoguana/ktop/master/install.sh | bash`
+- One-line install and upgrade: `curl -sSfL https://raw.githubusercontent.com/jellypowered/ktop/master/install.sh | bash`
 - No runtime dependencies — no Python, no pip, no venv
 
 ### Core
@@ -31,7 +31,7 @@ A terminal-based system resource monitor built for tracking resource usage when 
 ## Install
 
 ```bash
-curl -sSfL https://raw.githubusercontent.com/brontoguana/ktop/master/install.sh | bash
+curl -sSfL https://raw.githubusercontent.com/jellypowered/ktop/master/install.sh | bash
 ```
 
 Downloads the latest binary and installs it to `/usr/local/bin` (will prompt for sudo if needed). Run the same command again to upgrade.
@@ -51,7 +51,7 @@ ktop uninstall
 ### Build from source
 
 ```bash
-git clone https://github.com/brontoguana/ktop.git
+git clone https://github.com/jellypowered/ktop.git
 cd ktop/ktop-rs
 cargo build --release
 sudo cp target/release/ktop /usr/local/bin/

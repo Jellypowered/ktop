@@ -385,9 +385,9 @@ fn render_gpu(f: &mut Frame, area: Rect, state: &AppState) {
             theme.bar_high
         };
 
-        let util_bar = bar_spans(g.util, bar_w, theme);
-        let mem_bar = bar_spans(g.mem_pct, bar_w, theme);
-        let power_bar = bar_spans(power_pct, bar_w, theme);
+        let util_bar = bar_spans(g.util, bar_w, theme, state.steady_render, truecolor);
+        let mem_bar = bar_spans(g.mem_pct, bar_w, theme, state.steady_render, truecolor);
+        let power_bar = bar_spans(power_pct, bar_w, theme, state.steady_render, truecolor);
 
         let spark_p = if power_watts > 0.0 {
             format!("{:.1} W", power_watts)
